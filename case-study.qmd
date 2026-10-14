@@ -1,0 +1,77 @@
+---
+title: "case-study"
+format: html
+editor: visual
+---
+
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(moments)
+library(ggplot2)
+```
+
+```{r}
+turbulence <- read.csv("data/data-train.csv")
+central_moments <- turbulence |>
+  select(R_moment_1, R_moment_2, R_moment_3, R_moment_4) |>
+  t() |>
+  raw2central() |>
+  t()
+
+turbulence <- turbulence |>
+  mutate(
+    variance = central_moments[,2],
+    skewness = central_moments[,3],
+    kurtosis = central_moments[,4],
+  )
+
+```
+
+```{r}
+turbulence |>
+  select(St, Re, Fr) |>
+  mutate(Fr = 1/Fr) |>
+  cor()
+```
+
+
+```{r}
+turbulence |>
+  ggplot(aes(x = log(St), y = log(R_moment_1), shape = as.factor(Re), color = 1/Fr)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
+```
+
+```{r}
+turbulence |>
+  ggplot(aes(x = log(St), y = log(variance), color = as.factor(Re), shape = as.factor(1/Fr))) +
+  geom_point() 
+```
+
+```{r}
+turbulence |>
+  ggplot(aes(x = log(St), y = log(skewness), color = as.factor(Re), shape = as.factor(1/Fr))) +
+  geom_point() 
+```
+```{r}
+turbulence |>
+  ggplot(aes(x = log(St), y = log(kurtosis), color = as.factor(Re), shape = as.factor(1/Fr))) +
+  geom_point() 
+```
+```{r}
+turbulence |>
+  ggplot(aes(x = log(Re), y = log(kurtosis), color = St, shape = as.factor(Fr))) +
+  geom_point() 
+```
+```{r}
+turbulence |>
+  ggplot(aes(x = 1/Fr, y = log(kurtosis), color = as.factor(log(Re)))) +
+  geom_point() 
+```
+```{r}
+moment1_lm <- lm(log(R_moment_1) ~ 1/Fr + Re + log(St), data = turbulence)
+summary(moment1_lm)
+```
+
