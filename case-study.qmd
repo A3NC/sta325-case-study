@@ -1,77 +1,129 @@
 ---
-title: "case-study"
-format: html
-editor: visual
+title: "STA 325 Case Study"
+format:
+  pdf
+execute:
+  echo: true
+  warning: false
+  message: false
 ---
-
 
 ```{r}
 library(tidyverse)
-library(tidymodels)
-library(moments)
-library(ggplot2)
+library(knitr)
+
+train_path <- "data/data-train.csv"
+raw <- read_csv(train_path, na = c("", "NA"), show_col_types = FALSE)
 ```
 
-```{r}
-turbulence <- read.csv("data/data-train.csv")
-central_moments <- turbulence |>
-  select(R_moment_1, R_moment_2, R_moment_3, R_moment_4) |>
-  t() |>
-  raw2central() |>
-  t()
+## Data Processing
 
-turbulence <- turbulence |>
+We see that the existing data contains predictor values collected at different levels, instead of continuous values. It includes a valid infinity value for one of the predictors that is not a result of missing data. We compute standard deviation, skewness, and kurtosis from raw moments.
+
+```{r}
+# predictor value distribution
+level_table <- function(x, nm) {
+  tibble(level = as.character(x)) |>
+    count(level, name = "n") |>
+    mutate(predictor = nm, .before = 1)
+}
+predictor_levels <- bind_rows(level_table(raw$Re, "Re"),
+                              level_table(raw$Fr, "Fr"),
+                              level_table(raw$St, "St"))
+predictor_levels |>
+  kable()
+
+# compute central moments
+m1 <- raw$R_moment_1
+m2 <- raw$R_moment_2
+m3 <- raw$R_moment_3
+m4 <- raw$R_moment_4
+
+analysis <- raw |>
   mutate(
-    variance = central_moments[,2],
-    skewness = central_moments[,3],
-    kurtosis = central_moments[,4],
+    variance = m2 - m1^2,
+    mean = m1,
+    sd = sqrt(variance),
+    central_moment_3 = m3 - 3 * m2 * m1 + 2 * m1^3,
+    central_moment_4 = m4 - 4 * m3 * m1 + 6 * m2 * m1^2 - 3 * m1^4,
+    skewness = central_moment_3 / sd^3,
+    kurtosis = central_moment_4 / sd^4
   )
 
 ```
 
+
 ```{r}
-turbulence |>
-  select(St, Re, Fr) |>
-  mutate(Fr = 1/Fr) |>
-  cor()
+response_names <- c("mean", "sd", "skewness", "kurtosis")
+response_summary <- analysis |>
+  summarise(across(all_of(response_names),
+                   list(min = min, q1 = ~ quantile(.x, .25), median = median,
+                        mean = mean, q3 = ~ quantile(.x, .75), max = max,
+                        sd = sd))) |>
+  pivot_longer(everything(), names_to = c("response", ".value"), names_pattern = "(.*)_(min|q1|median|mean|q3|max|sd)")
+response_summary |>
+  kable(digits = 2)
 ```
+
+## Exploratory data analysis
 
 
 ```{r}
-turbulence |>
-  ggplot(aes(x = log(St), y = log(R_moment_1), shape = as.factor(Re), color = 1/Fr)) +
-  geom_point() +
-  geom_smooth(method = "lm", se = FALSE)
+predictor_dist <- analysis |>
+  mutate(Fr_condition = if_else(is.infinite(Fr), "Inf", as.character(Fr))) |>
+  group_by(Re, Fr_condition) |>
+  summarise(n = n(), 
+            St_min = min(St), 
+            St_max = max(St), 
+            St_levels = n_distinct(St), .groups = "drop")
+predictor_dist |>
+  kable()
+```
+
+### Response scales and associations within observed support
+
+Histograms on both original and log scales address skew and candidate response transformations. The conditional plots assess whether the response changes with `St`, whether curvature is plausible, and whether observed trends differ by `Re` or `Fr`. Log axes are used only for strictly positive responses. Smooths are descriptive LOESS fits within the observed `Re`–`Fr` facets, not inferential tests.
+
+```{r}
+response_long <- analysis |>
+  select(Re, Fr, St, all_of(response_names)) |>
+  pivot_longer(all_of(response_names), names_to = "response", values_to = "value") |>
+  mutate(Fr_condition = if_else(is.infinite(Fr), "Inf", as.character(Fr)),
+         log_value = log(value), 
+         log_St = log(St),
+         response = fct_relevel(response, "mean", "sd", "skewness", "kurtosis"))
+
+ggplot(response_long, aes(log_value)) +
+  geom_histogram(bins = 18, color = "white", fill = "darkblue") +
+  facet_wrap(~ response, scales = "free") +
+  labs(x = "Log scale summary statistics", 
+       y = "Count", 
+       title = "Distribution of summary statistics on log scale") +
+  theme_minimal()
 ```
 
 ```{r}
-turbulence |>
-  ggplot(aes(x = log(St), y = log(variance), color = as.factor(Re), shape = as.factor(1/Fr))) +
-  geom_point() 
-```
-
-```{r}
-turbulence |>
-  ggplot(aes(x = log(St), y = log(skewness), color = as.factor(Re), shape = as.factor(1/Fr))) +
-  geom_point() 
-```
-```{r}
-turbulence |>
-  ggplot(aes(x = log(St), y = log(kurtosis), color = as.factor(Re), shape = as.factor(1/Fr))) +
-  geom_point() 
-```
-```{r}
-turbulence |>
-  ggplot(aes(x = log(Re), y = log(kurtosis), color = St, shape = as.factor(Fr))) +
-  geom_point() 
-```
-```{r}
-turbulence |>
-  ggplot(aes(x = 1/Fr, y = log(kurtosis), color = as.factor(log(Re)))) +
-  geom_point() 
-```
-```{r}
-moment1_lm <- lm(log(R_moment_1) ~ 1/Fr + Re + log(St), data = turbulence)
-summary(moment1_lm)
+#| fig-height: 8
+#| fig-width: 8
+ggplot(response_long, aes(log_St, log_value, color = factor(Re))) +
+  geom_point(alpha = .8) +
+  geom_smooth(method = "loess", formula = y ~ x, se = FALSE, linewidth = .6) +
+  facet_grid(rows = vars(response), cols = vars(Fr_condition), scales = "free_y",
+             switch = "y") +
+  labs(x = "log(St)", 
+       y = "Log scale summary statistics", 
+       color = "Re level",
+       title = "Relation between St and responses, with different levels of Fr and Re",
+       subtitle = "Columns represent Fr value") +
+  theme_minimal() +
+  theme(
+    panel.border = element_rect(color = "grey65", fill = NA, linewidth = .45),
+    panel.spacing.y = grid::unit(1.1, "lines"),
+    strip.placement = "outside",
+    strip.background = element_rect(fill = "grey88", color = "grey55"),
+    strip.text.y.left = element_text(face = "bold", angle = 0),
+    strip.text.x = element_text(face = "bold"),
+    legend.position = "bottom"
+  )
 ```
 
