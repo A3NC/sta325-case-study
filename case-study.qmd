@@ -18,7 +18,7 @@ raw <- read_csv(train_path, na = c("", "NA"), show_col_types = FALSE)
 
 ## Data Processing
 
-We see that the existing data contains predictor values collected at different levels, instead of continuous values. It includes a valid infinity value for one of the predictors that is not a result of missing data. We compute standard deviation, skewness, and kurtosis from raw moments.
+We see that the existing data contains Re and Fr values that are collected at distinct levels with low cardinality, instead of continuous values. It includes a valid infinity value for one of the predictors that is not a result of missing data. We compute standard deviation, skewness, and kurtosis from raw moments.
 
 ```{r}
 # predictor value distribution
@@ -28,12 +28,11 @@ level_table <- function(x, nm) {
     mutate(predictor = nm, .before = 1)
 }
 predictor_levels <- bind_rows(level_table(raw$Re, "Re"),
-                              level_table(raw$Fr, "Fr"),
-                              level_table(raw$St, "St"))
+                              level_table(raw$Fr, "Fr"))
 predictor_levels |>
   kable()
 
-# compute central moments
+# compute central moments + summary stats
 m1 <- raw$R_moment_1
 m2 <- raw$R_moment_2
 m3 <- raw$R_moment_3
@@ -80,9 +79,6 @@ predictor_dist |>
   kable()
 ```
 
-### Response scales and associations within observed support
-
-Histograms on both original and log scales address skew and candidate response transformations. The conditional plots assess whether the response changes with `St`, whether curvature is plausible, and whether observed trends differ by `Re` or `Fr`. Log axes are used only for strictly positive responses. Smooths are descriptive LOESS fits within the observed `Re`–`Fr` facets, not inferential tests.
 
 ```{r}
 response_long <- analysis |>
