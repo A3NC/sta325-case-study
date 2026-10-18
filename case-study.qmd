@@ -123,3 +123,46 @@ ggplot(response_long, aes(log_St, log_value, color = factor(Re))) +
   )
 ```
 
+```{r}
+analysis <- analysis |>
+  mutate(Re_f = factor(Re), Fr_f = factor(Fr), log_St = log(St))
+
+fits <- list(
+  mean = lm(log(mean) ~ log_St + Re_f + Fr_f, data = analysis),
+  sd = lm(log(sd) ~ log_St + Re_f + Fr_f, data = analysis),
+  skewness = lm(log(skewness) ~ log_St + Re_f + Fr_f, data = analysis),
+  kurtosis = lm(log(kurtosis) ~ log_St + Re_f + Fr_f, data = analysis)
+)
+
+imap_dfr(fits, \(m, r) tibble(
+  response = r,
+  r_squared = summary(m)$r.squared,
+  adj_r_squared = summary(m)$adj.r.squared,
+  residual_sd = sigma(m)
+)) |>
+  kable(digits = 3)
+
+resid_df <- imap_dfr(fits, \(m, r) tibble(
+  response = r,
+  fitted = fitted(m),
+  residual = resid(m)
+)) |>
+  mutate(response = fct_inorder(response))
+
+ggplot(resid_df, aes(fitted, residual)) +
+  geom_point(alpha = .7) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_smooth(method = "loess", formula = y ~ x, se = FALSE, linewidth = .6) +
+  facet_wrap(~ response, scales = "free") +
+  labs(x = "Fitted (log scale)", y = "Residual",
+       title = "Residuals vs fitted, baseline linear models") +
+  theme_minimal()
+
+ggplot(resid_df, aes(sample = residual)) +
+  stat_qq(alpha = .7) +
+  stat_qq_line() +
+  facet_wrap(~ response, scales = "free") +
+  labs(x = "Theoretical quantiles", y = "Sample quantiles",
+       title = "Normal Q-Q plots of residuals") +
+  theme_minimal()
+```
