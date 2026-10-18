@@ -166,3 +166,38 @@ ggplot(resid_df, aes(sample = residual)) +
        title = "Normal Q-Q plots of residuals") +
   theme_minimal()
 ```
+
+```{r}
+fits_int <- list(
+  mean = lm(log(mean) ~ log_St * (Re_f + Fr_f) + Re_f:Fr_f, data = analysis),
+  sd = lm(log(sd) ~ log_St * (Re_f + Fr_f) + Re_f:Fr_f, data = analysis),
+  skewness = lm(log(skewness) ~ log_St * (Re_f + Fr_f) + Re_f:Fr_f, data = analysis),
+  kurtosis = lm(log(kurtosis) ~ log_St * (Re_f + Fr_f) + Re_f:Fr_f, data = analysis)
+)
+
+tibble(
+  response = names(fits),
+  baseline_adj_r2 = map_dbl(fits, \(m) summary(m)$adj.r.squared),
+  interaction_adj_r2 = map_dbl(fits_int, \(m) summary(m)$adj.r.squared),
+  f_test_p_value = map2_dbl(fits, fits_int, \(a, b) anova(a, b)$`Pr(>F)`[2])
+) |>
+  kable(digits = 3)
+
+resid_int <- imap_dfr(fits_int, \(m, r) tibble(response = r, fitted = fitted(m), residual = resid(m))) |>
+  mutate(response = fct_inorder(response))
+
+ggplot(resid_int, aes(fitted, residual)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_smooth(method = "loess", formula = y ~ x, se = FALSE) +
+  facet_wrap(~ response, scales = "free") +
+  labs(title = "Residuals vs fitted, interaction models") +
+  theme_minimal()
+
+ggplot(resid_int, aes(sample = residual)) +
+  stat_qq() +
+  stat_qq_line() +
+  facet_wrap(~ response, scales = "free") +
+  labs(title = "Normal Q-Q plots, interaction models") +
+  theme_minimal()
+```
