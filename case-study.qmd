@@ -201,3 +201,26 @@ ggplot(resid_int, aes(sample = residual)) +
   labs(title = "Normal Q-Q plots, interaction models") +
   theme_minimal()
 ```
+
+```{r}
+grid <- analysis |>
+  distinct(Re_f, Fr_f) |>
+  expand_grid(log_St = seq(log(0.05), log(3), length.out = 50))
+
+effects <- imap_dfr(fits_int, \(m, r) mutate(grid, response = r, predicted = predict(m, grid))) |>
+  mutate(response = fct_inorder(response))
+
+points <- analysis |>
+  pivot_longer(c(mean, sd, skewness, kurtosis), names_to = "response", values_to = "value") |>
+  mutate(response = factor(response, levels(effects$response)))
+
+ggplot(effects, aes(exp(log_St), exp(predicted), color = Re_f, linetype = Fr_f)) +
+  geom_line() +
+  geom_point(data = points, aes(St, value), inherit.aes = FALSE, alpha = .3, size = .8) +
+  scale_x_log10() +
+  scale_y_log10() +
+  facet_wrap(~ response, scales = "free_y") +
+  labs(x = "St", y = "Predicted value", color = "Re", linetype = "Fr",
+       title = "Effect of St, Re, and Fr on each summary statistic") +
+  theme_minimal()
+```
