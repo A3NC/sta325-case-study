@@ -224,3 +224,44 @@ ggplot(effects, aes(exp(log_St), exp(predicted), color = Re_f, linetype = Fr_f))
        title = "Effect of St, Re, and Fr on each summary statistic") +
   theme_minimal()
 ```
+
+
+
+```{r}
+
+# Model comparison with LOOCV
+
+library(boot)
+
+fits <- list(
+  mean = glm(log(mean) ~ log_St + Re_f + Fr_f, data = analysis),
+  sd = glm(log(sd) ~ log_St + Re_f + Fr_f, data = analysis),
+  skewness = glm(log(skewness) ~ log_St + Re_f + Fr_f, data = analysis),
+  kurtosis = glm(log(kurtosis) ~ log_St + Re_f + Fr_f, data = analysis)
+)
+fits_int <- list(
+  mean = glm(log(mean) ~ log_St * (Re_f + Fr_f) + Re_f:Fr_f, data = analysis),
+  sd = glm(log(sd) ~ log_St * (Re_f + Fr_f) + Re_f:Fr_f, data = analysis),
+  skewness = glm(log(skewness) ~ log_St * (Re_f + Fr_f) + Re_f:Fr_f, data = analysis),
+  kurtosis = glm(log(kurtosis) ~ log_St * (Re_f + Fr_f) + Re_f:Fr_f, data = analysis)
+)
+fits_int2 <- list(
+  mean = glm(log(mean) ~ log_St + Re_f * Fr_f, data = analysis),
+  sd = glm(log(sd) ~ log_St + Re_f * Fr_f, data = analysis),
+  skewness = glm(log(skewness) ~ log_St + Re_f * Fr_f, data = analysis),
+  kurtosis = glm(log(kurtosis) ~ log_St + Re_f * Fr_f, data = analysis)
+)
+loocv_int2 <- sapply(fits_int2, cv.glm, data = analysis)
+
+loocv_int <- sapply(fits_int, cv.glm, data = analysis)
+
+loocv_noint <- sapply(fits, cv.glm, data = analysis)
+```
+```{r}
+comparison <- rbind(lapply(loocv_int2["delta",],`[[`, 1),
+lapply(loocv_int["delta",],`[[`, 1),
+lapply(loocv_noint["delta",],`[[`, 1))
+rownames(comparison) = c("Interaction Model 2", "Interaction Model 1", "Baseline")
+comparison
+```
+
