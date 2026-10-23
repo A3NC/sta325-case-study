@@ -1,0 +1,159 @@
+---
+title: "STA 325 Case Study Report"
+author: "Sherry He, Megan Kolenski, Ian Le, Aaron Siminou"
+format: pdf
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+library(tidyverse)
+library(knitr)
+library(boot)
+library(moments)
+
+data <- read_csv("data/data-train.csv")
+
+raw_moments <- t(as.matrix(select(data, R_moment_1:R_moment_4)))
+central <- raw2central(rbind(1, raw_moments))
+
+data <- data |>
+  mutate(
+    mean = R_moment_1,
+    variance = central[3, ],
+    sd = sqrt(variance),
+    skewness = central[4, ] / sd ^ 3,
+    kurtosis = central[5, ] / sd ^ 4,
+    Re_f = factor(Re),
+    Fr_f = factor(Fr),
+    log_St = log(St)
+  )
+
+response_labels <- c(mean = "Mean", sd = "Standard deviation", skewness = "Skewness", kurtosis = "Kurtosis")
+responses <- set_names(names(response_labels))
+```
+
+```{r}
+candidates <- c(
+  "Baseline (additive)" = "log_St + Re_f + Fr_f",
+  "Interaction Model 1" = "log_St * (Re_f + Fr_f) + Re_f:Fr_f",
+  "Interaction Model 2" = "log_St + Re_f * Fr_f"
+)
+model_formula <- \(r, rhs) as.formula(paste0("log(", r, ") ~ ", rhs))
+
+loocv <- expand_grid(model = names(candidates), response = responses) |>
+  mutate(
+    mse = map2_dbl(model, response, \(m, r)
+      cv.glm(data, glm(model_formula(r, candidates[[m]]), data = data))$delta[1]),
+    n_par = map_dbl(model, \(m) lm(model_formula("mean", candidates[[m]]), data = data)$rank)
+  )
+cv <- loocv |>
+  select(model, response, mse) |>
+  pivot_wider(names_from = response, values_from = mse) |>
+  column_to_rownames("model")
+
+fits <- map(responses, \(r) lm(model_formula(r, candidates[["Interaction Model 2"]]), data = data))
+r_squared <- map_dbl(fits, \(m) summary(m)$r.squared)
+```
+
+# Introduction
+
+This case study is an exploration of how 3 factors affect the clustering of inertial particles in a turbulent flow such as clouds. The statistical modeling uses a dataset produced by computer simulation. The dataset has 89 observations of clustering behaviors, where each response was observed under the following variables:
+
+* **Reynolds number** $Re$: 90, 224, 398.
+* **Froude number** $Fr$: 0.052, 0.3, $\infty$.
+* **Stokes number** $St$: `r n_distinct(data$St)` values between `r min(data$St)` and `r max(data$St)`.
+
+Our key research objectives are:
+
+1. Predicting the mean, standard deviation, skewness, and kurtosis of the distribution at a new $(Re, Fr, St)$ observation
+2. Explaining how each parameter affects the response
+
+Our final model is as follows, where $Re_{224}$, $Re_{398}$, $Fr_{0.3}$, and $Fr_{\infty}$ are 0/1 indicators for each level (baseline $Re = 90$, $Fr = 0.052$).
+
+$$
+\begin{aligned}
+\log{\text{responses}} = {} & \beta_0 + \beta_1 \log{St} + \beta_2 Re_{224} + \beta_3 Re_{398} + \beta_4 Fr_{0.3} + \beta_5 Fr_{\infty}\\
+& + \beta_6 Re_{224} Fr_{0.3} + \beta_7 Re_{224} Fr_{\infty} + \beta_8 Re_{398} Fr_{\infty} + \varepsilon, \qquad \varepsilon \sim N(0, \sigma^2)
+\end{aligned}
+$$
+
+This model addresses both objectives. For prediction, it achieves a LOOCV MSE of `r sprintf("%.3f", mean(unlist(cv["Interaction Model 2", ])))` when averaged across the 4 response variables. For inference, it is a linear model, so each coefficient is easy to interpret and understand.
+
+# Methodology
+
+## Responses and predictors
+
+Each observation in the dataset reports the first four raw moments of the response distribution, which we converted to central moments with `raw2central`. From these we computed the mean, standard deviation, skewness, and kurtosis of each distribution, which are the 4 desired response variables.
+
+## Modeling
+
+We selected our final model using two steps.
+
+We first compared linear modeling with generalized additive modeling (GAM). The resulting MSE values showed comparable performance levels. We decided to use linear modeling as linear models are more easily interpreted and generally have lower variance compared to GAMs, which is valuable on unseen data.
+
+We fitted 3 linear models for comparison. All 3 models predict the log of the response variables. The baseline model has no interaction terms. Interaction Model 1 adds interactions of $\log{St}$ with both $Re$ and $Fr$, as well as $Re \times Fr$. Interaction Model 2 only adds $Re \times Fr$.
+$$
+\begin{aligned}
+\text{Baseline:} \quad & \log y = \log{St} + Re + Fr\\
+\text{Interaction Model 1:} \quad & \log y = \log{St} + Re + Fr + \log{St} \times Re + \log{St} \times Fr + Re \times Fr\\
+\text{Interaction Model 2:} \quad & \log y = \log{St} + Re + Fr + Re \times Fr
+\end{aligned}
+$$
+
+Averaged across the 4 response variables, the LOOCV MSE was `r sprintf("%.3f", mean(unlist(cv["Baseline (additive)", ])))` for the baseline model, `r sprintf("%.3f", mean(unlist(cv["Interaction Model 1", ])))` for Interaction Model 1, and `r sprintf("%.3f", mean(unlist(cv["Interaction Model 2", ])))` for Interaction Model 2. Interaction Model 1 had a slightly lower LOOCV MSE for the mean, but Interaction Model 2 performed better for the other 3 response variables, so we selected Interaction Model 2 as our final model.
+
+```{r}
+loocv |>
+  group_by(response) |>
+  mutate(cell = if_else(mse == min(mse), sprintf("\\textbf{%.4f}", mse), sprintf("%.4f", mse))) |>
+  ungroup() |>
+  select(Model = model, Parameters = n_par, response, cell) |>
+  pivot_wider(names_from = response, values_from = cell) |>
+  rename(!!!set_names(responses, response_labels)) |>
+  kable(format = "latex", booktabs = TRUE, escape = FALSE)
+```
+
+For each of the models four separate linear fits are created, one for each of the response variables. LOOCV fits each of those models 89 times, leaving out one observation for each fit.
+
+We decided to log-transform the response variables because they are right-skewed and span wide ranges. We also log-transformed $St$ for the same reason.
+
+```{r}
+#| fig-height: 1
+#| fig-width: 7
+data |>
+  select(all_of(unname(responses)), St) |>
+  pivot_longer(everything()) |>
+  mutate(name = factor(name, levels = c(names(response_labels), "St"), labels = c(response_labels, "St"))) |>
+  ggplot(aes(value)) +
+  geom_histogram(bins = 15, fill = "#012169", color = "white") +
+  scale_x_continuous(labels = scales::label_number(big.mark = ",")) +
+  facet_wrap(~ name, nrow = 1, scales = "free") +
+  labs(x = NULL, y = "Count") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid.minor = element_blank())
+```
+
+$Re$ and $Fr$ each have 3 levels in the dataset, so we treat them as categorical.
+
+## Diagnostics
+
+The final model fits all 4 response variables well, with $R^2$ between `r sprintf("%.3f", min(r_squared))` and `r sprintf("%.3f", max(r_squared))`.
+
+```{r}
+#| fig-height: 1
+#| fig-width: 7
+imap_dfr(fits, \(m, r) tibble(response = response_labels[[r]], fitted = fitted(m), residual = resid(m))) |>
+  mutate(response = factor(response, levels = response_labels)) |>
+  ggplot(aes(fitted, residual)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_point(size = 0.8, color = "#012169") +
+  facet_wrap(~ response, nrow = 1, scales = "free") +
+  labs(x = "Fitted value (log scale)", y = "Residual") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid.minor = element_blank())
+```
+
+The residuals are centered around 0 with roughly equal vertical spread and no significant pattern, so the linearity and equal variance assumptions are satisfied. The dataset was collected from independent computer simulation runs, so the independence condition is also satisfied. $n = 89 > 30$ also satisfies the normality assumption.
