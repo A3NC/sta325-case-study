@@ -12,6 +12,7 @@ execute:
 library(tidyverse)
 library(knitr)
 library(boot)
+library(mgcv)
 library(moments)
 
 data <- read_csv("data/data-train.csv")
@@ -28,7 +29,8 @@ data <- data |>
     kurtosis = central[5, ] / sd ^ 4,
     Re_f = factor(Re),
     Fr_f = factor(Fr),
-    log_St = log(St)
+    log_St = log(St),
+    group = interaction(Re_f, Fr_f, drop = TRUE)
   )
 
 response_labels <- c(mean = "Mean", sd = "Standard deviation", skewness = "Skewness", kurtosis = "Kurtosis")
@@ -43,17 +45,28 @@ candidates <- c(
 )
 model_formula <- \(r, rhs) as.formula(paste0("log(", r, ") ~ ", rhs))
 
-loocv <- expand_grid(model = names(candidates), response = responses) |>
+loocv_lm <- expand_grid(model = names(candidates), response = responses) |>
   mutate(
     mse = map2_dbl(model, response, \(m, r)
       cv.glm(data, glm(model_formula(r, candidates[[m]]), data = data))$delta[1]),
     n_par = map_dbl(model, \(m) lm(model_formula("mean", candidates[[m]]), data = data)$rank)
   )
+
+gam_formula <- \(r) model_formula(r, "group + s(log_St, by = group, k = 4)")
+loocv_gam <- tibble(model = "GAM", response = responses) |>
+  mutate(
+    mse = map_dbl(response, \(r) mean(map_dbl(seq_len(nrow(data)), \(i)
+      (log(data[[r]][i]) - predict(gam(gam_formula(r), data = data[-i, ], method = "REML"), data[i, ]))^2))),
+    n_par = round(sum(gam(gam_formula("mean"), data = data, method = "REML")$edf))
+  )
+
+loocv <- bind_rows(loocv_lm, loocv_gam)
 cv <- loocv |>
   select(model, response, mse) |>
   pivot_wider(names_from = response, values_from = mse) |>
   column_to_rownames("model")
 
+fits_baseline <- map(responses, \(r) lm(model_formula(r, candidates[["Baseline (additive)"]]), data = data))
 fits <- map(responses, \(r) lm(model_formula(r, candidates[["Interaction Model 2"]]), data = data))
 r_squared <- map_dbl(fits, \(m) summary(m)$r.squared)
 ```
@@ -62,9 +75,9 @@ r_squared <- map_dbl(fits, \(m) summary(m)$r.squared)
 
 This case study is an exploration of how 3 factors affect the clustering of inertial particles in a turbulent flow such as clouds. The statistical modeling uses a dataset produced by computer simulation. The dataset has 89 observations of clustering behaviors, where each response was observed under the following variables:
 
-* **Reynolds number** $Re$: 90, 224, 398.
-* **Froude number** $Fr$: 0.052, 0.3, $\infty$.
-* **Stokes number** $St$: `r n_distinct(data$St)` values between `r min(data$St)` and `r max(data$St)`.
+* **Reynolds number** $Re$: 90, 224, 398. This measures how strong the turbulence is.
+* **Froude number** $Fr$: 0.052, 0.3, $\infty$. This measures the strength of gravity. Smaller $Fr$ means stronger gravity, and $Fr = \infty$ means no gravity.
+* **Stokes number** $St$: `r n_distinct(data$St)` values between `r min(data$St)` and `r max(data$St)`. This measures particle inertia. Particles with small $St$ follow the flow closely, while particles with large $St$ are heavier and respond more slowly.
 
 Our key research objectives are:
 
@@ -80,6 +93,8 @@ $$
 \end{aligned}
 $$
 
+A separate model is fit for each of the 4 response variables, so each one has its own coefficients. There is no $Re_{398} Fr_{0.3}$ term because the dataset has no observations at $Re = 398$, $Fr = 0.3$.
+
 This model addresses both objectives. For prediction, it achieves a LOOCV MSE of `r sprintf("%.3f", mean(unlist(cv["Interaction Model 2", ])))` when averaged across the 4 response variables. For inference, it is a linear model, so each coefficient is easy to interpret and understand.
 
 # Methodology
@@ -92,7 +107,7 @@ Each observation in the dataset reports the first four raw moments of the respon
 
 We selected our final model using two steps.
 
-We first compared linear modeling with generalized additive modeling (GAM). The resulting MSE values showed comparable performance levels. We decided to use linear modeling as linear models are more easily interpreted and generally have lower variance compared to GAMs, which is valuable on unseen data.
+We first compared linear modeling with generalized additive modeling (GAM). The GAM fits a separate smooth curve in $\log{St}$ for each $(Re, Fr)$ combination. It had a higher LOOCV MSE than Interaction Model 2 for all 4 response variables (see the table below). We decided to use linear modeling as linear models are more easily interpreted and generally have lower variance compared to GAMs, which is valuable on unseen data.
 
 We fitted 3 linear models for comparison. All 3 models predict the log of the response variables. The baseline model has no interaction terms. Interaction Model 1 adds interactions of $\log{St}$ with both $Re$ and $Fr$, as well as $Re \times Fr$. Interaction Model 2 only adds $Re \times Fr$.
 $$
@@ -116,12 +131,12 @@ loocv |>
   kable(format = "latex", booktabs = TRUE, escape = FALSE)
 ```
 
-For each of the models four separate linear fits are created, one for each of the response variables. LOOCV fits each of those models 89 times, leaving out one observation for each fit.
+For each of the models four separate fits are created, one for each of the response variables. LOOCV fits each of those models 89 times, leaving out one observation for each fit. For the GAM, the parameter count is its effective degrees of freedom.
 
 We decided to log-transform the response variables because they are right-skewed and span wide ranges. We also log-transformed $St$ for the same reason.
 
 ```{r}
-#| fig-height: 1
+#| fig-height: 1.4
 #| fig-width: 7
 data |>
   select(all_of(unname(responses)), St) |>
@@ -140,20 +155,44 @@ $Re$ and $Fr$ each have 3 levels in the dataset, so we treat them as categorical
 
 ## Diagnostics
 
-The final model fits all 4 response variables well, with $R^2$ between `r sprintf("%.3f", min(r_squared))` and `r sprintf("%.3f", max(r_squared))`.
+The final model fits all 4 response variables well, with $R^2$ between `r sprintf("%.3f", min(r_squared))` and `r sprintf("%.3f", max(r_squared))`. The plots below compare the residuals of the baseline model (top) and the final model (bottom).
 
 ```{r}
-#| fig-height: 1
+#| fig-height: 2.4
 #| fig-width: 7
-imap_dfr(fits, \(m, r) tibble(response = response_labels[[r]], fitted = fitted(m), residual = resid(m))) |>
+map_dfr(list(Baseline = fits_baseline, "Final model" = fits), \(fit_list)
+  imap_dfr(fit_list, \(m, r) tibble(response = response_labels[[r]], fitted = fitted(m), residual = resid(m))),
+  .id = "model") |>
   mutate(response = factor(response, levels = response_labels)) |>
   ggplot(aes(fitted, residual)) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
   geom_point(size = 0.8, color = "#012169") +
-  facet_wrap(~ response, nrow = 1, scales = "free") +
+  facet_grid(model ~ response, scales = "free_x") +
   labs(x = "Fitted value (log scale)", y = "Residual") +
   theme_minimal(base_size = 9) +
   theme(panel.grid.minor = element_blank())
 ```
 
-The residuals are centered around 0 with roughly equal vertical spread and no significant pattern, so the linearity and equal variance assumptions are satisfied. The dataset was collected from independent computer simulation runs, so the independence condition is also satisfied. $n = 89 > 30$ also satisfies the normality assumption.
+The baseline residuals show clear patterns, especially for skewness and kurtosis, where whole groups of observations sit above or below 0. This means the effect of $Re$ depends on $Fr$. The final model removes these patterns. Its residuals are centered around 0 with roughly equal vertical spread, so the linearity and equal variance assumptions are reasonable. Some pattern remains for standard deviation.
+
+```{r}
+#| fig-height: 1.4
+#| fig-width: 7
+imap_dfr(fits, \(m, r) tibble(response = response_labels[[r]], residual = resid(m))) |>
+  mutate(response = factor(response, levels = response_labels)) |>
+  ggplot(aes(sample = residual)) +
+  stat_qq(size = 0.8, color = "#012169") +
+  stat_qq_line(color = "grey50") +
+  facet_wrap(~ response, nrow = 1, scales = "free") +
+  labs(x = "Theoretical quantiles", y = "Sample quantiles") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid.minor = element_blank())
+```
+
+The Q-Q plots show the residuals are roughly normal, except for a few large negative residuals. These all come from observations at the smallest Stokes number, $St = 0.05$, where the model predicts values that are too high. Particles with very small $St$ behave almost like the fluid itself and barely cluster, so the model is less accurate there. We kept these observations because there is no sign they are errors.
+
+The dataset was collected from computer simulation runs, but observations with the same $Re$ and $Fr$ likely come from the same simulation, so they may not be fully independent. This could make our uncertainty estimates slightly too small.
+
+# Results
+
+# Conclusion
