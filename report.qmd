@@ -1,7 +1,10 @@
 ---
 title: "STA 325 Case Study Report"
 author: "Sherry He, Megan Kolenski, Ian Le, Aaron Siminou"
-format: pdf
+format:
+  pdf:
+    geometry: margin=0.9in
+    fontsize: 11pt
 execute:
   echo: false
   warning: false
@@ -73,7 +76,7 @@ r_squared <- map_dbl(fits, \(m) summary(m)$r.squared)
 
 # Introduction
 
-This case study is an exploration of how 3 factors affect the clustering of inertial particles in a turbulent flow such as clouds. The statistical modeling uses a dataset produced by computer simulation. The dataset has 89 observations of clustering behaviors, where each response was observed under the following variables:
+This case study explores how three factors affect the clustering of inertial particles in turbulent flows such as clouds. The data come from computer simulations: in each run, our collaborators simulated particles moving in a turbulent flow, identified clusters of particles, and measured the volume of each cluster. The dataset has 89 simulation runs, each summarizing the distribution of particle cluster volumes at one $(Re, Fr, St)$ setting. The three parameters take the following values:
 
 * **Reynolds number** $Re$: 90, 224, 398. This measures how strong the turbulence is.
 * **Froude number** $Fr$: 0.052, 0.3, $\infty$. This measures the strength of gravity. Smaller $Fr$ means stronger gravity, and $Fr = \infty$ means no gravity.
@@ -105,18 +108,10 @@ Each observation in the dataset reports the first four raw moments of the respon
 
 ## Modeling
 
-We selected our final model using two steps.
-
 We first compared linear modeling with generalized additive modeling (GAM). The GAM fits a separate smooth curve in $\log{St}$ for each $(Re, Fr)$ combination. It had a higher LOOCV MSE than Interaction Model 2 for all 4 response variables (see the table below). We decided to use linear modeling as linear models are more easily interpreted and generally have lower variance compared to GAMs, which is valuable on unseen data.
 
 We fitted 3 linear models for comparison. All 3 models predict the log of the response variables. The baseline model has no interaction terms. Interaction Model 1 adds interactions of $\log{St}$ with both $Re$ and $Fr$, as well as $Re \times Fr$. Interaction Model 2 only adds $Re \times Fr$.
-$$
-\begin{aligned}
-\text{Baseline:} \quad & \log y = \log{St} + Re + Fr\\
-\text{Interaction Model 1:} \quad & \log y = \log{St} + Re + Fr + \log{St} \times Re + \log{St} \times Fr + Re \times Fr\\
-\text{Interaction Model 2:} \quad & \log y = \log{St} + Re + Fr + Re \times Fr
-\end{aligned}
-$$
+
 
 Averaged across the 4 response variables, the LOOCV MSE was `r sprintf("%.3f", mean(unlist(cv["Baseline (additive)", ])))` for the baseline model, `r sprintf("%.3f", mean(unlist(cv["Interaction Model 1", ])))` for Interaction Model 1, and `r sprintf("%.3f", mean(unlist(cv["Interaction Model 2", ])))` for Interaction Model 2. Interaction Model 1 had a slightly lower LOOCV MSE for the mean, but Interaction Model 2 performed better for the other 3 response variables, so we selected Interaction Model 2 as our final model.
 
@@ -131,34 +126,16 @@ loocv |>
   kable(format = "latex", booktabs = TRUE, escape = FALSE)
 ```
 
-For each of the models four separate fits are created, one for each of the response variables. LOOCV fits each of those models 89 times, leaving out one observation for each fit. For the GAM, the parameter count is its effective degrees of freedom.
+For the GAM, the parameter count is its effective degrees of freedom.
 
-We decided to log-transform the response variables because they are right-skewed and span wide ranges. We also log-transformed $St$ for the same reason.
-
-```{r}
-#| fig-height: 1.4
-#| fig-width: 7
-data |>
-  select(all_of(unname(responses)), St) |>
-  pivot_longer(everything()) |>
-  mutate(name = factor(name, levels = c(names(response_labels), "St"), labels = c(response_labels, "St"))) |>
-  ggplot(aes(value)) +
-  geom_histogram(bins = 15, fill = "#012169", color = "white") +
-  scale_x_continuous(labels = scales::label_number(big.mark = ",")) +
-  facet_wrap(~ name, nrow = 1, scales = "free") +
-  labs(x = NULL, y = "Count") +
-  theme_minimal(base_size = 9) +
-  theme(panel.grid.minor = element_blank())
-```
-
-$Re$ and $Fr$ each have 3 levels in the dataset, so we treat them as categorical.
+We log-transformed the response variables and $St$ because they are right-skewed and span wide ranges. $Re$ and $Fr$ each have only 3 levels, so we treat them as categorical.
 
 ## Diagnostics
 
 The final model fits all 4 response variables well, with $R^2$ between `r sprintf("%.3f", min(r_squared))` and `r sprintf("%.3f", max(r_squared))`. The plots below compare the residuals of the baseline model (top) and the final model (bottom).
 
 ```{r}
-#| fig-height: 2.4
+#| fig-height: 1.7
 #| fig-width: 7
 map_dfr(list(Baseline = fits_baseline, "Final model" = fits), \(fit_list)
   imap_dfr(fit_list, \(m, r) tibble(response = response_labels[[r]], fitted = fitted(m), residual = resid(m))),
@@ -175,24 +152,83 @@ map_dfr(list(Baseline = fits_baseline, "Final model" = fits), \(fit_list)
 
 The baseline residuals show clear patterns, especially for skewness and kurtosis, where whole groups of observations sit above or below 0. This means the effect of $Re$ depends on $Fr$. The final model removes these patterns. Its residuals are centered around 0 with roughly equal vertical spread, so the linearity and equal variance assumptions are reasonable. Some pattern remains for standard deviation.
 
-```{r}
-#| fig-height: 1.4
-#| fig-width: 7
-imap_dfr(fits, \(m, r) tibble(response = response_labels[[r]], residual = resid(m))) |>
-  mutate(response = factor(response, levels = response_labels)) |>
-  ggplot(aes(sample = residual)) +
-  stat_qq(size = 0.8, color = "#012169") +
-  stat_qq_line(color = "grey50") +
-  facet_wrap(~ response, nrow = 1, scales = "free") +
-  labs(x = "Theoretical quantiles", y = "Sample quantiles") +
-  theme_minimal(base_size = 9) +
-  theme(panel.grid.minor = element_blank())
-```
-
-The Q-Q plots show the residuals are roughly normal, except for a few large negative residuals. These all come from observations at the smallest Stokes number, $St = 0.05$, where the model predicts values that are too high. Particles with very small $St$ behave almost like the fluid itself and barely cluster, so the model is less accurate there. We kept these observations because there is no sign they are errors.
+The residuals are roughly normal, except for a few large negative residuals. These all come from observations at the smallest Stokes number, $St = 0.05$, where the model predicts values that are too high. Particles with very small $St$ behave almost like the fluid itself and barely cluster, so the model is less accurate there. We kept these observations because there is no sign they are errors.
 
 The dataset was collected from computer simulation runs, but observations with the same $Re$ and $Fr$ likely come from the same simulation, so they may not be fully independent. This could make our uncertainty estimates slightly too small.
 
 # Results
 
+```{r}
+test <- read_csv("data/data-test.csv", show_col_types = FALSE) |>
+  mutate(Re_f   = factor(Re, levels = levels(data$Re_f)),
+         Fr_f   = factor(Fr, levels = levels(data$Fr_f)),
+         log_St = log(St))
+
+preds <- map_dfc(responses, \(r) {
+  p <- exp(predict(fits[[r]], newdata = test, interval = "prediction"))
+  tibble(!!r := p[, "fit"],
+         !!paste0(r, "_lower") := p[, "lwr"],
+         !!paste0(r, "_upper") := p[, "upr"])
+})
+
+test_out <- bind_cols(test |> select(St, Re, Fr), preds)
+write_csv(test_out, "predictions.csv")
+```
+
+## Predictions on the hold-out set
+
+We predicted the four statistics at the `r nrow(test)` hold-out settings, with 95% prediction intervals computed on the log scale and then exponentiated, so point predictions estimate medians. All values are provided in `predictions.csv`. Every hold-out setting uses an $(Re, Fr)$ combination and $St$ value within the training range, so no prediction requires extrapolation, although the two settings with $St = 0.05$ are less reliable given the diagnostics.
+
+The precision of the predictions varies widely across the four statistics. Predictions of the mean are precise: each interval’s upper bound is only about 1.5 times its lower bound. Skewness and kurtosis intervals are wider, at about 2.5 and 4.8 times, and standard deviation intervals are the widest, at about 7.15 times, consistent with the residual pattern for standard deviation noted in the diagnostics.
+
+## Effects of each parameter
+
+Because the model is fit on the log scale, each coefficient is a multiplicative effect: exponentiating it gives the factor by which a statistic changes. Since $Re$ and $Fr$ interact, the effect of gravity at a given $Re$ is the sum of the $Fr$ coefficient and the corresponding interaction coefficient. @fig-effects shows the fitted relationships alongside the observed data.
+
+```{r}
+#| label: fig-effects
+#| fig-cap: "Fitted values from the final model (lines) and observed data (points). Both axes are on a log scale."
+#| fig-height: 1.7
+#| fig-width: 7
+#| fig-pos: "t"
+grid <- expand_grid(St = exp(seq(log(0.05), log(3), length.out = 50)),
+                    Re = c(90, 224, 398), Fr = c(0.052, 0.3, Inf)) |>
+  filter(!(Re == 398 & Fr == 0.3)) |>
+  mutate(Re_f = factor(Re, levels = levels(data$Re_f)),
+         Fr_f = factor(Fr, levels = levels(data$Fr_f)),
+         log_St = log(St))
+
+pred_grid <- imap_dfr(fits, \(m, r) grid |>
+  mutate(response = response_labels[[r]], value = exp(predict(m, grid))))
+
+obs <- data |>
+  select(St, Re_f, Fr_f, all_of(unname(responses))) |>
+  pivot_longer(all_of(unname(responses)), names_to = "r", values_to = "value") |>
+  mutate(response = unname(response_labels[r]))
+
+bind_rows(pred_grid, obs) |>
+  mutate(response = factor(response, levels = response_labels)) |>
+  ggplot(aes(St, value, color = Re_f)) +
+  geom_line(data = \(d) filter(d, is.na(r)), aes(linetype = Fr_f)) +
+  geom_point(data = \(d) filter(d, !is.na(r)), aes(shape = Fr_f), size = 0.7) +
+      scale_x_log10() +
+  scale_y_log10(labels = \(x) sapply(x, \(v) format(v, scientific = FALSE,
+                big.mark = ",", drop0trailing = TRUE, trim = TRUE))) +
+  facet_wrap(~ response, nrow = 1, scales = "free_y") +
+  labs(x = "St (log scale)", y = "Value (log scale)",
+       color = "Re", linetype = "Fr", shape = "Fr") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid.minor = element_blank(), legend.position = "bottom")
+```
+
+**Turbulence intensity ($Re$) controls cluster size.** Under strong gravity, increasing $Re$ from 90 to 398 shrinks the mean cluster volume by a factor of about 400 and its standard deviation by a factor of about 300. Without gravity the reductions are smaller, about 250 times for the mean and 9 times for the standard deviation, but $Re$ remains the dominant influence on the mean cluster volume. Stronger turbulence produces a wider range of eddy sizes, including much smaller ones, which appears to break particles into much smaller clusters. However, under strong gravity, $Re$ has no detectable effect on skewness or kurtosis ($p > 0.6$).
+
+**Strong gravity creates heavy tails, but only when turbulence is weak.** At $Re = 90$, moving from strong gravity ($Fr = 0.052$) to no gravity ($Fr = \infty$) reduces skewness by a factor of 16 and kurtosis by a factor of about 240. Strong gravity therefore produces a cluster-size distribution dominated by many small clusters and occasional very large ones. This effect weakens as $Re$ increases: at $Re = 224$, removing gravity reduces kurtosis by a factor of about 9, and at $Re = 398$ it has almost no effect. One physical interpretation is that as turbulence strengthens, turbulent velocity fluctuations overwhelm gravitational settling, so the flow rather than gravity determines how particles cluster.
+
+**Moderate gravity behaves like no gravity.** In all four models, the coefficients for $Fr = 0.3$ and $Fr = \infty$ are very similar. Within the range studied, gravity affects clustering only when it is strong.
+
+**Particle inertia ($St$) has a modest effect on scale and little effect on shape.** Doubling $St$ increases the mean cluster volume by about 15% and the standard deviation by about 38%, consistent with heavier particles being flung out of eddies and collecting into larger, more variable clusters. Doubling $St$ lowers kurtosis by only about 7% and has no significant effect on skewness. Interaction Model 1, which let the effect of $St$ vary by $(Re, Fr)$, did not improve predictions, so a common $St$ effect appears reasonable.
+
 # Conclusion
+
+Each parameter shapes the cluster-size distribution in a different way. Turbulence intensity mostly determines how large clusters are, strong gravity mostly determines how heavy-tailed their sizes are, and particle inertia has a smaller effect on both. turbulence intensity sets how large particle clusters are, strong gravity sets how heavy-tailed their size distribution is, and particle inertia plays a secondary role. Because gravity's influence fades as turbulence strengthens, conclusions drawn at one turbulence level should not be assumed to hold at another. The model predicts the mean cluster volume reliably and the standard deviation less precisely. Its main limitations are the small design (three levels each of $Re$ and $Fr$, with no runs at $Re = 398$, $Fr = 0.3$), a weaker fit at the smallest Stokes numbers, and possible correlation within simulations. New simulations at intermediate $Re$ and $Fr$ values and at the missing combination would address these gaps most directly.
