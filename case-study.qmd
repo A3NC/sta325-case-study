@@ -11,6 +11,7 @@ execute:
 ```{r}
 library(tidyverse)
 library(knitr)
+library(dplyr)
 
 train_path <- "data/data-train.csv"
 raw <- read_csv(train_path, na = c("", "NA"), show_col_types = FALSE)
@@ -109,7 +110,7 @@ ggplot(response_long, aes(log_St, log_value, color = factor(Re))) +
   labs(x = "log(St)", 
        y = "Log scale summary statistics", 
        color = "Re level",
-       title = "Relation between St and responses, with different levels of Fr and Re",
+       title = "Relation between log-St and responses, with different levels of Fr and Re",
        subtitle = "Columns represent Fr value") +
   theme_minimal() +
   theme(
