@@ -1,11 +1,33 @@
 ---
-title: "How Turbulence, Gravity, and Inertia Shape Particle Clusters"
-subtitle: "STA 325 Case Study"
+title: "STA 325 Case Study"
 author: "Sherry He, Megan Kolenski, Ian Le, Aaron Siminou"
 format:
   revealjs:
     slide-number: true
     theme: simple
+    include-in-header:
+      text: |
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap">
+        <style>
+        .reveal { font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; color: #262626; }
+        .reveal .slides section { text-align: left; }
+        .reveal h1, .reveal h2, .reveal h3 { font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; text-transform: none; letter-spacing: 0; }
+        .reveal h2 { color: #012169; font-weight: 700; border-bottom: 3px solid #00539B; padding-bottom: 0.2em; margin-bottom: 0.45em; font-size: 1.35em; }
+        .reveal ul { display: block; margin-left: 1.1em; }
+        .reveal li { margin-bottom: 0.45em; }
+        .reveal li::marker { color: #00539B; }
+        .reveal strong { color: #012169; }
+        .reveal table { margin: 0.3em 0 0.5em 0; font-size: 0.85em; }
+        .reveal table th { color: #012169; border-bottom: 2px solid #012169; }
+        .reveal .progress { color: #00539B; }
+        .reveal .slide-number { color: #666666; background: transparent; }
+        #title-slide, #title-slide * { text-align: left; }
+        #title-slide .title { color: #FFFFFF; font-size: 2.2em; font-weight: 700; line-height: 1.15; border-bottom: 4px solid #A1C4E9; padding-bottom: 0.25em; display: inline-block; }
+        #title-slide .quarto-title-authors { justify-content: flex-start; margin-top: 0.6em; }
+        #title-slide .quarto-title-author-name { color: #E2E6ED; }
+        </style>
+title-slide-attributes:
+  data-background-color: "#012169"
 execute:
   echo: false
   warning: false
@@ -18,6 +40,9 @@ library(knitr)
 library(boot)
 library(mgcv)
 library(moments)
+
+add_st_terms <- \(df) df |>
+  mutate(log_St = log(St), log_St_sq = log(St)^2, log_St_cubic = log(St)^3)
 
 data <- read_csv("data/data-train.csv", show_col_types = FALSE)
 
@@ -32,17 +57,18 @@ data <- data |>
     kurtosis = central[5, ] / sd ^ 4,
     Re_f = factor(Re),
     Fr_f = factor(Fr),
-    log_St = log(St),
     group = interaction(Re_f, Fr_f, drop = TRUE)
-  )
+  ) |>
+  add_st_terms()
 
 response_labels <- c(mean = "Mean", sd = "Standard deviation", skewness = "Skewness", kurtosis = "Kurtosis")
 responses <- set_names(names(response_labels))
 
 candidates <- c(
   "Baseline (additive)" = "log_St + Re_f + Fr_f",
-  "Interaction Model 1" = "log_St * (Re_f + Fr_f) + Re_f:Fr_f",
-  "Interaction Model 2 (final)" = "log_St + Re_f * Fr_f"
+  "Model 1" = "log_St * (Re_f + Fr_f) + Re_f:Fr_f",
+  "Model 2" = "log_St + Re_f * Fr_f",
+  "Cubic (final)" = "log_St + log_St_sq + log_St_cubic + Re_f * Fr_f"
 )
 model_formula <- \(r, rhs) as.formula(paste0("log(", r, ") ~ ", rhs))
 
@@ -64,13 +90,13 @@ loocv_gam <- tibble(model = "GAM", response = responses) |>
 loocv <- bind_rows(loocv_lm, loocv_gam)
 
 fits_baseline <- map(responses, \(r) lm(model_formula(r, candidates[["Baseline (additive)"]]), data = data))
-fits <- map(responses, \(r) lm(model_formula(r, candidates[["Interaction Model 2 (final)"]]), data = data))
+fits <- map(responses, \(r) lm(model_formula(r, candidates[["Cubic (final)"]]), data = data))
 r_squared <- map_dbl(fits, \(m) summary(m)$r.squared)
 
 test <- read_csv("data/data-test.csv", show_col_types = FALSE) |>
   mutate(Re_f = factor(Re, levels = levels(data$Re_f)),
-         Fr_f = factor(Fr, levels = levels(data$Fr_f)),
-         log_St = log(St))
+         Fr_f = factor(Fr, levels = levels(data$Fr_f))) |>
+  add_st_terms()
 
 interval_ratio <- map_dbl(responses, \(r) {
   p <- exp(predict(fits[[r]], newdata = test, interval = "prediction"))
@@ -82,17 +108,17 @@ slide_theme <- theme_minimal(base_size = 16) +
         strip.text = element_text(face = "bold"))
 ```
 
-## The problem and our goals
+## Problem and Goals {.smaller}
 
 Our collaborators simulated particles moving through turbulent flow and summarized the distribution of particle cluster volumes in each of `r nrow(data)` runs. Each run used one setting of three parameters:
 
 - **Reynolds number (Re)** measures how strong the turbulence is (90, 224, 398).
-- **Froude number (Fr)** measures the strength of gravity, where smaller values mean stronger gravity and $\infty$ means no gravity (0.052, 0.3, $\infty$).
+- **Froude number (Fr)** measures the strength of gravity, where smaller values mean stronger gravity and ∞ means no gravity (0.052, 0.3, ∞).
 - **Stokes number (St)** measures particle inertia, from particles that follow the flow closely to heavier particles that respond slowly (`r min(data$St)` to `r max(data$St)`).
 
 We had two goals: to predict the mean, standard deviation, skewness, and kurtosis of cluster volume at a new setting, and to explain how each parameter affects those four statistics.
 
-## How we prepared the data
+## Data Preparation {.smaller}
 
 We computed the four statistics from the raw moments in the data. All four are right-skewed and span several orders of magnitude, with kurtosis ranging from about `r format(round(min(data$kurtosis)), big.mark = ",")` to `r format(round(max(data$kurtosis)), big.mark = ",")`, so we modeled the log of each statistic and used log(St) as a predictor.
 
@@ -100,9 +126,9 @@ Re and Fr each take only three values, so we treated them as categorical. A smoo
 
 The data come from eight (Re, Fr) settings. The combination Re = 398 with Fr = 0.3 was never simulated, so our model has no term for it.
 
-## How we chose the model {.smaller}
+## Model Selection {.smaller}
 
-We compared three linear models and a GAM using leave-one-out cross-validation, which refits each model `r nrow(data)` times with one run held out and measures the prediction error on that run.
+We compared four linear models and a GAM using leave-one-out cross-validation, which refits each model `r nrow(data)` times with one run held out and measures the prediction error on that run.
 
 ```{r}
 loocv |>
@@ -115,38 +141,40 @@ loocv |>
   kable(align = "lrrrrr")
 ```
 
-Adding an interaction between Re and Fr gave the largest improvement over the baseline. Letting the effect of St change across settings (Model 1) or fitting smooth curves in St (GAM) added parameters without lowering prediction error, so we chose Model 2. It had the lowest error for three of the four statistics and was close to the best for the mean.
+Adding an interaction between Re and Fr (Model 2) gave the largest improvement over the baseline. Letting the effect of St change across settings (Model 1 and the GAM) made predictions worse, while letting St follow one shared curve (the cubic model) made them better. The cubic model had the lowest error for all four statistics.
 
-## Checking the fit
+## Checking Fit {.smaller}
 
 ```{r}
 #| fig-width: 12
-#| fig-height: 5
-map_dfr(list(Baseline = fits_baseline, "Final model" = fits), \(fit_list)
+#| fig-height: 4.6
+#| out-width: "100%"
+map_dfr(list(Baseline = fits_baseline, "Cubic model" = fits), \(fit_list)
   imap_dfr(fit_list, \(m, r) tibble(response = response_labels[[r]], fitted = fitted(m), residual = resid(m))),
   .id = "model") |>
   mutate(response = factor(response, levels = response_labels)) |>
   ggplot(aes(fitted, residual)) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
-  geom_point(size = 1.5, color = "#012169", alpha = 0.8) +
+  geom_point(size = 1.5, color = "#00539B", alpha = 0.8) +
   facet_grid(model ~ response, scales = "free_x") +
   labs(x = "Fitted value (log scale)", y = "Residual") +
   slide_theme
 ```
 
-In the baseline, whole groups of runs sit above or below zero for skewness and kurtosis, which shows that the effect of Re depends on Fr. The final model removes these patterns, with $R^2$ between `r sprintf("%.2f", min(r_squared))` and `r sprintf("%.3f", max(r_squared))`. The few large negative residuals all come from runs at St = 0.05, where particles behave almost like the fluid itself.
+In the baseline, whole groups of runs sit above or below zero for skewness and kurtosis, which shows that the effect of Re depends on Fr. The cubic model removes these patterns, with R² between `r sprintf("%.3f", min(r_squared))` and `r sprintf("%.3f", max(r_squared))`. Its residuals are centered around zero, although the tails are heavier than normal and some uneven spread remains for standard deviation.
 
-## What each parameter does
+## Parameters {.smaller}
 
 ```{r}
 #| fig-width: 12
-#| fig-height: 5.5
+#| fig-height: 5.2
+#| out-width: "100%"
 grid <- expand_grid(St = exp(seq(log(0.05), log(3), length.out = 50)),
                     Re = c(90, 224, 398), Fr = c(0.052, 0.3, Inf)) |>
   filter(!(Re == 398 & Fr == 0.3)) |>
   mutate(Re_f = factor(Re, levels = levels(data$Re_f)),
-         Fr_f = factor(Fr, levels = levels(data$Fr_f)),
-         log_St = log(St))
+         Fr_f = factor(Fr, levels = levels(data$Fr_f))) |>
+  add_st_terms()
 
 pred_grid <- imap_dfr(fits, \(m, r) grid |>
   mutate(response = response_labels[[r]], value = exp(predict(m, grid))))
@@ -164,23 +192,31 @@ bind_rows(pred_grid, obs) |>
   scale_x_log10() +
   scale_y_log10(labels = \(x) sapply(x, \(v) format(v, scientific = FALSE, big.mark = ",",
                                                    drop0trailing = TRUE, trim = TRUE))) +
-  scale_color_manual(values = c("90" = "#c0392b", "224" = "#2a9d8f", "398" = "#012169")) +
+  scale_color_manual(values = c("90" = "#6FA8DC", "224" = "#00539B", "398" = "#012169")) +
   facet_wrap(~ response, nrow = 1, scales = "free_y") +
   labs(x = "St (log scale)", y = "Value (log scale)", color = "Re", linetype = "Fr", shape = "Fr") +
   slide_theme
 ```
 
-Lines show the final model and points show the observed runs.
+Lines show the cubic model and points show the observed runs. Every setting shares the same curve in St, shifted up or down by Re and Fr.
 
-## Key findings
+## Key Findings {.smaller}
 
-- **Turbulence controls cluster size.** Under strong gravity, raising Re from 90 to 398 makes the mean cluster volume about 400 times smaller, which fits the idea that stronger turbulence breaks particles into smaller clusters.
-- **Strong gravity creates heavy tails, but only when turbulence is weak.** At Re = 90, strong gravity raises kurtosis about 240 times compared with no gravity. The effect drops to about 9 times at Re = 224 and disappears at Re = 398, as turbulence overwhelms gravitational settling.
-- **Moderate gravity behaves like no gravity.** The estimates for Fr = 0.3 and Fr = $\infty$ are nearly the same in all four models.
-- **Particle inertia has a smaller effect.** Doubling St raises the mean by about 15% and the standard deviation by about 38%, with little change in skewness or kurtosis.
+- **Turbulence controls cluster size.** Under strong gravity, raising Re from 90 to 398 makes the mean cluster volume about 410 times smaller and the standard deviation about 340 times smaller, which fits the idea that stronger turbulence breaks particles into smaller clusters.
+- **Strong gravity creates heavy tails, but only when turbulence is weak.** At Re = 90, strong gravity raises kurtosis about 240 times compared with no gravity. The effect drops to about 9 times at Re = 224 and almost disappears at Re = 398, as turbulence overwhelms gravitational settling.
+- **Moderate gravity behaves like no gravity.** The fitted effects for Fr = 0.3 and Fr = ∞ are close for all four statistics.
+- **Particle inertia has a curved effect.** The standard deviation rises about 9 times as St goes from 0.05 to 0.5 and levels off after that, while skewness and kurtosis peak near St = 0.2.
 
-## Predictions and limitations
+## Predictions and Limitations {.smaller}
 
-For the `r nrow(test)` hold-out runs, we report 95% prediction intervals computed on the log scale. The upper bound of the interval is typically about `r sprintf("%.1f", interval_ratio[["mean"]])` times the lower bound for the mean, `r sprintf("%.1f", interval_ratio[["skewness"]])` times for skewness, `r sprintf("%.1f", interval_ratio[["kurtosis"]])` times for kurtosis, and `r sprintf("%.1f", interval_ratio[["sd"]])` times for the standard deviation, so the mean is predicted most precisely.
+**Predictions**
 
-The main limitations are the small design, with only three levels of Re and Fr and no runs at Re = 398 with Fr = 0.3, a weaker fit at the smallest Stokes number, and possible correlation among runs from the same simulation. New simulations at intermediate Re and Fr values and at the missing setting would address these gaps most directly.
+- We predicted all four statistics for the `r nrow(test)` hold-out runs, with 95% prediction intervals computed on the log scale.
+- The upper bound of the interval is typically about `r sprintf("%.1f", interval_ratio[["mean"]])` times the lower bound for the mean, `r sprintf("%.1f", interval_ratio[["skewness"]])` times for skewness, `r sprintf("%.1f", interval_ratio[["sd"]])` times for the standard deviation, and `r sprintf("%.1f", interval_ratio[["kurtosis"]])` times for kurtosis, so the mean is predicted most precisely.
+
+**Limitations**
+
+- The design is small, with only three levels of Re and Fr and no runs at Re = 398 with Fr = 0.3.
+- The residuals have heavier tails than normal, so the intervals may be less accurate, especially at St = 0.05.
+- Runs from the same simulation may be correlated, which could make our intervals slightly too narrow.
+- New simulations at intermediate Re and Fr values and at the missing setting would address these gaps most directly.
