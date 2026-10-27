@@ -165,7 +165,7 @@ ggplot(fit_data, aes(observed, predicted, color = St, shape = Fr_f)) +
   slide_theme
 ```
 
-The dashed line marks perfect agreement. Rows separate Re, marker shapes show Fr, and color shows St. Predictions use all three parameters, including the cubic terms in log(St); this is an in-sample fit plot, while LOOCV above evaluates prediction on held-out runs.
+The dashed line indicates perfect agreement. Re levels are represented by rows, Fr levels are represented by marker shapes, and St by color. Predictions use all three parameters, including the square and cubic terms of log(St).
 
 ## Key findings
 
