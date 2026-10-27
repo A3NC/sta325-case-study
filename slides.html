@@ -151,23 +151,23 @@ Sherry He, Megan Kolenski, Ian Le, Aaron Siminou
 </section>
 <section id="how-we-prepared-the-data" class="slide level2">
 <h2>How we prepared the data</h2>
-<p>We computed the four statistics from the raw moments in the data. All four are right-skewed and span several orders of magnitude, with kurtosis ranging from about 151 to 132,137, so we modeled the log of each statistic and used log(St) as a predictor.</p>
-<p>Re and Fr each take only three values, so we treated them as categorical. A smooth curve through three points cannot be checked against the data, and every hold-out run uses one of the settings we trained on.</p>
-<p>The data come from eight (Re, Fr) settings. The combination Re = 398 with Fr = 0.3 was never simulated, so our model has no term for it.</p>
+<p>We computed the four statistics from the raw moments in the data. All four are right-skewed and span several orders of magnitude, with kurtosis ranging from about 151 to 132,137, so we modeled the log of each statistic. The cubic model uses linear, squared, and cubed terms in log(St) to capture curvature.</p>
+<p>Re and Fr each take only three values, so we treated them as categorical. Every hold-out run uses observed Re and Fr levels; we make no prediction for the missing Re = 398, Fr = 0.3 setting.</p>
+<p>The training data cover eight of the nine possible (Re, Fr) settings.</p>
 </section>
 <section id="how-we-chose-the-model" class="slide level2 smaller">
 <h2>How we chose the model</h2>
-<p>We compared three linear models and a GAM using leave-one-out cross-validation, which refits each model 89 times with one run held out and measures the prediction error on that run.</p>
+<p>We compared four linear models and a GAM using leave-one-out cross-validation.</p>
 <div class="cell">
 <div class="cell-output-display">
-<table class="caption-top">
+<table class="caption-top" style="width:100%;">
 <colgroup>
-<col style="width: 30%">
-<col style="width: 12%">
-<col style="width: 12%">
-<col style="width: 20%">
-<col style="width: 12%">
-<col style="width: 12%">
+<col style="width: 24%">
+<col style="width: 13%">
+<col style="width: 13%">
+<col style="width: 22%">
+<col style="width: 13%">
+<col style="width: 13%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -191,20 +191,28 @@ Sherry He, Megan Kolenski, Ian Le, Aaron Siminou
 <tr class="even">
 <td style="text-align: left;">Interaction Model 1</td>
 <td style="text-align: right;">13</td>
-<td style="text-align: right;"><strong>0.0104</strong></td>
+<td style="text-align: right;">0.0104</td>
 <td style="text-align: right;">0.3290</td>
 <td style="text-align: right;">0.0715</td>
 <td style="text-align: right;">0.2119</td>
 </tr>
 <tr class="odd">
-<td style="text-align: left;">Interaction Model 2 (final)</td>
+<td style="text-align: left;">Interaction Model 2</td>
 <td style="text-align: right;">9</td>
 <td style="text-align: right;">0.0114</td>
-<td style="text-align: right;"><strong>0.2565</strong></td>
-<td style="text-align: right;"><strong>0.0554</strong></td>
-<td style="text-align: right;"><strong>0.1656</strong></td>
+<td style="text-align: right;">0.2565</td>
+<td style="text-align: right;">0.0554</td>
+<td style="text-align: right;">0.1656</td>
 </tr>
 <tr class="even">
+<td style="text-align: left;">Cubic Model (final)</td>
+<td style="text-align: right;">11</td>
+<td style="text-align: right;"><strong>0.0093</strong></td>
+<td style="text-align: right;"><strong>0.1377</strong></td>
+<td style="text-align: right;"><strong>0.0480</strong></td>
+<td style="text-align: right;"><strong>0.1567</strong></td>
+</tr>
+<tr class="odd">
 <td style="text-align: left;">GAM</td>
 <td style="text-align: right;">27</td>
 <td style="text-align: right;">0.0124</td>
@@ -216,31 +224,31 @@ Sherry He, Megan Kolenski, Ian Le, Aaron Siminou
 </table>
 </div>
 </div>
-<p>Adding an interaction between Re and Fr gave the largest improvement over the baseline. Letting the effect of St change across settings (Model 1) or fitting smooth curves in St (GAM) added parameters without lowering prediction error, so we chose Model 2. It had the lowest error for three of the four statistics and was close to the best for the mean.</p>
+<p>The cubic model had the lowest LOOCV error for all four statistics. It keeps the Re-by-Fr interaction and adds a curved relationship with St; the more flexible GAM had higher error for each response.</p>
 </section>
 <section id="checking-the-fit" class="slide level2">
 <h2>Checking the fit</h2>
 
-<img data-src="slides_files/figure-revealjs/unnamed-chunk-3-1.png" width="1152" class="r-stretch"><p>In the baseline, whole groups of runs sit above or below zero for skewness and kurtosis, which shows that the effect of Re depends on Fr.&nbsp;The final model removes these patterns, with <span class="math inline">\(R^2\)</span> between 0.94 and 0.998. The few large negative residuals all come from runs at St = 0.05, where particles behave almost like the fluid itself.</p>
+<img data-src="slides_files/figure-revealjs/unnamed-chunk-3-1.png" width="1152" class="r-stretch"><p>In the baseline, whole groups of runs sit above or below zero for skewness and kurtosis, which shows that the effect of Re depends on Fr.&nbsp;The cubic model captures this interaction and the curvature in St, with <span class="math inline">\(R^2\)</span> between 0.974 and 0.999. Residuals are centered around zero, though tail departures from normality remain and some spread remains for standard deviation.</p>
 </section>
-<section id="what-each-parameter-does" class="slide level2">
-<h2>What each parameter does</h2>
+<section id="observed-and-predicted-values" class="slide level2">
+<h2>Observed and predicted values</h2>
 
-<img data-src="slides_files/figure-revealjs/unnamed-chunk-4-1.png" width="1152" class="r-stretch"><p>Lines show the final model and points show the observed runs.</p>
+<img data-src="slides_files/figure-revealjs/unnamed-chunk-4-1.png" width="1152" class="r-stretch"><p>The dashed line marks perfect agreement. Rows separate Re, marker shapes show Fr, and color shows St.&nbsp;Predictions use all three parameters, including the cubic terms in log(St); this is an in-sample fit plot, while LOOCV above evaluates prediction on held-out runs.</p>
 </section>
 <section id="key-findings" class="slide level2">
 <h2>Key findings</h2>
 <ul>
-<li><strong>Turbulence controls cluster size.</strong> Under strong gravity, raising Re from 90 to 398 makes the mean cluster volume about 400 times smaller, which fits the idea that stronger turbulence breaks particles into smaller clusters.</li>
-<li><strong>Strong gravity creates heavy tails, but only when turbulence is weak.</strong> At Re = 90, strong gravity raises kurtosis about 240 times compared with no gravity. The effect drops to about 9 times at Re = 224 and disappears at Re = 398, as turbulence overwhelms gravitational settling.</li>
-<li><strong>Moderate gravity behaves like no gravity.</strong> The estimates for Fr = 0.3 and Fr = <span class="math inline">\(\infty\)</span> are nearly the same in all four models.</li>
-<li><strong>Particle inertia has a smaller effect.</strong> Doubling St raises the mean by about 15% and the standard deviation by about 38%, with little change in skewness or kurtosis.</li>
+<li><strong>Turbulence controls cluster size.</strong> Under strong gravity, raising Re from 90 to 398 makes the mean cluster volume about 410 times smaller and standard deviation about 340 times smaller. With no gravity, the reductions are about 250 times for the mean and 9.6 times for standard deviation.</li>
+<li><strong>Strong gravity creates heavy tails, but only when turbulence is weak.</strong> At Re = 90, strong gravity raises kurtosis about 244 times compared with no gravity. The effect drops to about 9 times at Re = 224 and is small at Re = 398, as turbulence overwhelms gravitational settling.</li>
+<li><strong>Moderate gravity behaves much like no gravity.</strong> In the cubic model, fitted effects for Fr = 0.3 and Fr = <span class="math inline">\(\infty\)</span> are similar across the four responses.</li>
+<li><strong>The St relationship is curved.</strong> The change in each statistic depends on where St lies in its range, so one doubling percentage does not summarize the fitted effect. The model uses a shared St curve across Re and Fr settings, with different response levels by setting.</li>
 </ul>
 </section>
 <section id="predictions-and-limitations" class="slide level2">
 <h2>Predictions and limitations</h2>
-<p>For the 23 hold-out runs, we report 95% prediction intervals computed on the log scale. The upper bound of the interval is typically about 1.5 times the lower bound for the mean, 2.5 times for skewness, 4.8 times for kurtosis, and 7.1 times for the standard deviation, so the mean is predicted most precisely.</p>
-<p>The main limitations are the small design, with only three levels of Re and Fr and no runs at Re = 398 with Fr = 0.3, a weaker fit at the smallest Stokes number, and possible correlation among runs from the same simulation. New simulations at intermediate Re and Fr values and at the missing setting would address these gaps most directly.</p>
+<p>For the 23 hold-out runs, we report 95% prediction intervals computed on the log scale. The upper bound is typically about 1.4 times the lower bound for the mean, 2.2 times for skewness, 4.1 times for kurtosis, and 3.8 times for standard deviation. The mean is predicted most precisely.</p>
+<p>The main limitations are the small design, with only three levels of Re and Fr and no runs at Re = 398 with Fr = 0.3, remaining residual departures from normality and spread, and possible correlation among runs from the same simulation. Predictions at St = 0.05 are at the observed range boundary. New simulations at intermediate Re and Fr values and at the missing setting would address these gaps most directly.</p>
 
 </section>
     </div>

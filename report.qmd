@@ -192,7 +192,7 @@ The precision of the predictions varies across the four statistics. Across the h
 
 ## Effects of each parameter
 
-Because the model is fit on the log scale, exponentiating a contrast gives the multiplicative change in a statistic. Since $Re$ and $Fr$ interact, the gravity contrast at a given $Re$ combines the $Fr$ coefficient with the corresponding interaction coefficient. The polynomial terms mean the effect of $St$ varies across its range rather than remaining a constant multiplier. @fig-effects shows the fitted relationships alongside the observed data.
+Because the model is fit on the log scale, exponentiating a contrast gives the multiplicative change in a statistic. Since $Re$ and $Fr$ interact, the gravity contrast at a given $Re$ combines the $Fr$ coefficient with the corresponding interaction coefficient. The polynomial terms mean the effect of $St$ varies across its range rather than remaining a constant multiplier.
 
 ```{r}
 #| label: fig-effects
@@ -244,3 +244,115 @@ bind_rows(pred_grid, obs) |>
 # Conclusion
 
 Each parameter shapes the cluster-size distribution in a different way. Turbulence intensity is strongly associated with cluster scale, while strong gravity is associated with heavier tails when turbulence is weak. The cubic model also indicates that the association with particle inertia changes across the observed $St$ range. Because gravity's influence varies with turbulence strength, conclusions drawn at one turbulence level should not be assumed to hold at another. The model predicts mean cluster volume most precisely; uncertainty is wider for the other statistics. Its main limitations are the small design (three levels each of $Re$ and $Fr$, with no runs at $Re = 398$, $Fr = 0.3$), remaining residual departures from normality and spread, and possible correlation within simulations. New simulations at intermediate $Re$ and $Fr$ values and at the missing combination would address these gaps most directly.
+
+{{< pagebreak >}}
+
+# Appendix: Exploratory Data Analysis
+
+## Data Processing
+
+We see that the existing data contains Re and Fr values that are collected at distinct levels with low cardinality, instead of continuous values. It includes a valid infinity value for one of the predictors that is not a result of missing data. We compute standard deviation, skewness, and kurtosis from raw moments.
+
+```{r}
+train_path <- "data/data-train.csv"
+raw <- read_csv(train_path, na = c("", "NA"), show_col_types = FALSE)
+```
+
+```{r}
+# predictor value distribution
+level_table <- function(x, nm) {
+  tibble(level = as.character(x)) |>
+    count(level, name = "n") |>
+    mutate(predictor = nm, .before = 1)
+}
+predictor_levels <- bind_rows(level_table(raw$Re, "Re"),
+                              level_table(raw$Fr, "Fr"))
+predictor_levels |>
+  kable()
+
+# compute central moments + summary stats
+m1 <- raw$R_moment_1
+m2 <- raw$R_moment_2
+m3 <- raw$R_moment_3
+m4 <- raw$R_moment_4
+
+analysis <- raw |>
+  mutate(
+    variance = m2 - m1^2,
+    mean = m1,
+    sd = sqrt(variance),
+    central_moment_3 = m3 - 3 * m2 * m1 + 2 * m1^3,
+    central_moment_4 = m4 - 4 * m3 * m1 + 6 * m2 * m1^2 - 3 * m1^4,
+    skewness = central_moment_3 / sd^3,
+    kurtosis = central_moment_4 / sd^4
+  )
+```
+
+```{r}
+response_names <- c("mean", "sd", "skewness", "kurtosis")
+response_summary <- analysis |>
+  summarise(across(all_of(response_names),
+                   list(min = min, q1 = ~ quantile(.x, .25), median = median,
+                        mean = mean, q3 = ~ quantile(.x, .75), max = max,
+                        sd = sd))) |>
+  pivot_longer(everything(), names_to = c("response", ".value"), names_pattern = "(.*)_(min|q1|median|mean|q3|max|sd)")
+response_summary |>
+  kable(digits = 2)
+```
+
+## Exploratory Data Analysis
+
+```{r}
+predictor_dist <- analysis |>
+  mutate(Fr_condition = if_else(is.infinite(Fr), "Inf", as.character(Fr))) |>
+  group_by(Re, Fr_condition) |>
+  summarise(n = n(), 
+            St_min = min(St), 
+            St_max = max(St), 
+            St_levels = n_distinct(St), .groups = "drop")
+predictor_dist |>
+  kable()
+```
+
+```{r}
+response_long <- analysis |>
+  select(Re, Fr, St, all_of(response_names)) |>
+  pivot_longer(all_of(response_names), names_to = "response", values_to = "value") |>
+  mutate(Fr_condition = if_else(is.infinite(Fr), "Inf", as.character(Fr)),
+         log_value = log(value), 
+         log_St = log(St),
+         response = fct_relevel(response, "mean", "sd", "skewness", "kurtosis"))
+
+ggplot(response_long, aes(log_value)) +
+  geom_histogram(bins = 18, color = "white", fill = "darkblue") +
+  facet_wrap(~ response, scales = "free") +
+  labs(x = "Log scale summary statistics", 
+       y = "Count", 
+       title = "Distribution of summary statistics on log scale") +
+  theme_minimal()
+```
+
+```{r}
+#| fig-height: 8
+#| fig-width: 8
+ggplot(response_long, aes(log_St, log_value, color = factor(Re))) +
+  geom_point(alpha = .8) +
+  geom_smooth(method = "loess", formula = y ~ x, se = FALSE, linewidth = .6) +
+  facet_grid(rows = vars(response), cols = vars(Fr_condition), scales = "free_y",
+             switch = "y") +
+  labs(x = "log(St)", 
+       y = "Log scale summary statistics", 
+       color = "Re level",
+       title = "Relation between log-St and responses, with different levels of Fr and Re",
+       subtitle = "Columns represent Fr value") +
+  theme_minimal() +
+  theme(
+    panel.border = element_rect(color = "grey65", fill = NA, linewidth = .45),
+    panel.spacing.y = grid::unit(1.1, "lines"),
+    strip.placement = "outside",
+    strip.background = element_rect(fill = "grey88", color = "grey55"),
+    strip.text.y.left = element_text(face = "bold", angle = 0),
+    strip.text.x = element_text(face = "bold"),
+    legend.position = "bottom"
+  )
+```
