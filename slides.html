@@ -6,21 +6,27 @@
 <script src="slides_files/libs/quarto-html/tippy.umd.min.js"></script>
 <link href="slides_files/libs/quarto-html/tippy.css" rel="stylesheet">
 <link href="slides_files/libs/quarto-html/light-border.css" rel="stylesheet">
-<link href="slides_files/libs/quarto-html/quarto-syntax-highlighting-2f5df379a58b258e96c21c0638c20c03.css" rel="stylesheet" id="quarto-text-highlighting-styles"><meta charset="utf-8">
-  <meta name="generator" content="quarto-1.6.42">
+<link href="slides_files/libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" id="quarto-text-highlighting-styles"><meta charset="utf-8">
+  <meta name="generator" content="quarto-1.10.18">
 
   <meta name="author" content="Sherry He, Megan Kolenski, Ian Le, Aaron Siminou">
-  <title>How Turbulence, Gravity, and Inertia Shape Particle Clusters</title>
+  <title>STA 325 Case Study</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
   <link rel="stylesheet" href="slides_files/libs/revealjs/dist/reset.css">
   <link rel="stylesheet" href="slides_files/libs/revealjs/dist/reveal.css">
   <style>
-    code{white-space: pre-wrap;}
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
     span.smallcaps{font-variant: small-caps;}
-    div.columns{display: flex; gap: min(4vw, 1.5em);}
-    div.column{flex: auto; overflow-x: auto;}
+    div.columns{display: flex; gap: 1.5em;}
+    div.column{flex: auto;}
+    @media screen {
+    div.columns{gap: min(4vw, 1.5em);}
+    div.column{overflow-x: auto;}
+    }
     div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
     ul.task-list{list-style: none;}
     ul.task-list li input[type="checkbox"] {
@@ -29,7 +35,7 @@
       vertical-align: middle;
     }
   </style>
-  <link rel="stylesheet" href="slides_files/libs/revealjs/dist/theme/quarto-8f3eebe07241f08526c91a7e9cbef8fd.css">
+  <link rel="stylesheet" href="slides_files/libs/revealjs/dist/theme/quarto-0427d8d92a431aa6a6430e53ec02a470.css">
   <link href="slides_files/libs/revealjs/plugin/quarto-line-highlight/line-highlight.css" rel="stylesheet">
   <link href="slides_files/libs/revealjs/plugin/reveal-menu/menu.css" rel="stylesheet">
   <link href="slides_files/libs/revealjs/plugin/reveal-menu/quarto-menu.css" rel="stylesheet">
@@ -121,43 +127,61 @@
       margin-right: 0; 
     }
   </style>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&amp;display=swap">
+  <style>
+  .reveal { font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; color: #262626; }
+  .reveal .slides section { text-align: left; }
+  .reveal h1, .reveal h2, .reveal h3 { font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; text-transform: none; letter-spacing: 0; }
+  .reveal h2 { color: #012169; font-weight: 700; border-bottom: 3px solid #00539B; padding-bottom: 0.2em; margin-bottom: 0.45em; font-size: 1.35em; }
+  .reveal ul { display: block; margin-left: 1.1em; }
+  .reveal li { margin-bottom: 0.45em; }
+  .reveal li::marker { color: #00539B; }
+  .reveal strong { color: #012169; }
+  .reveal table { margin: 0.3em 0 0.5em 0; font-size: 0.85em; }
+  .reveal table th { color: #012169; border-bottom: 2px solid #012169; }
+  .reveal .progress { color: #00539B; }
+  .reveal .slide-number { color: #666666; background: transparent; }
+  #title-slide, #title-slide * { text-align: left; }
+  #title-slide .title { color: #FFFFFF; font-size: 2.2em; font-weight: 700; line-height: 1.15; border-bottom: 4px solid #A1C4E9; padding-bottom: 0.25em; display: inline-block; }
+  #title-slide .quarto-title-authors { justify-content: flex-start; margin-top: 0.6em; }
+  #title-slide .quarto-title-author-name { color: #E2E6ED; }
+  </style>
 </head>
 <body class="quarto-light">
   <div class="reveal">
     <div class="slides">
 
-<section id="title-slide" class="quarto-title-block center">
-  <h1 class="title">How Turbulence, Gravity, and Inertia Shape Particle Clusters</h1>
-  <p class="subtitle">STA 325 Case Study</p>
+<section id="title-slide" data-background-color="#012169" class="quarto-title-block center">
+  <h1 class="title">STA 325 Case Study</h1>
 
 <div class="quarto-title-authors">
 <div class="quarto-title-author">
 <div class="quarto-title-author-name">
-Sherry He, Megan Kolenski, Ian Le, Aaron Siminou 
+Sherry He, Megan Kolenski, Ian Le, Aaron Siminou
 </div>
 </div>
 </div>
 
 </section>
-<section id="the-problem-and-our-goals" class="slide level2">
-<h2>The problem and our goals</h2>
+<section id="problem-and-goals" class="slide level2 smaller">
+<h2>Problem and Goals</h2>
 <p>Our collaborators simulated particles moving through turbulent flow and summarized the distribution of particle cluster volumes in each of 89 runs. Each run used one setting of three parameters:</p>
 <ul>
 <li><strong>Reynolds number (Re)</strong> measures how strong the turbulence is (90, 224, 398).</li>
-<li><strong>Froude number (Fr)</strong> measures the strength of gravity, where smaller values mean stronger gravity and <span class="math inline">\(\infty\)</span> means no gravity (0.052, 0.3, <span class="math inline">\(\infty\)</span>).</li>
+<li><strong>Froude number (Fr)</strong> measures the strength of gravity, where smaller values mean stronger gravity and ∞ means no gravity (0.052, 0.3, ∞).</li>
 <li><strong>Stokes number (St)</strong> measures particle inertia, from particles that follow the flow closely to heavier particles that respond slowly (0.05 to 3).</li>
 </ul>
 <p>We had two goals: to predict the mean, standard deviation, skewness, and kurtosis of cluster volume at a new setting, and to explain how each parameter affects those four statistics.</p>
 </section>
-<section id="how-we-prepared-the-data" class="slide level2">
-<h2>How we prepared the data</h2>
-<p>We computed the four statistics from the raw moments in the data. All four are right-skewed and span several orders of magnitude, with kurtosis ranging from about 151 to 132,137, so we modeled the log of each statistic. The cubic model uses linear, squared, and cubed terms in log(St) to capture curvature.</p>
-<p>Re and Fr each take only three values, so we treated them as categorical. Every hold-out run uses observed Re and Fr levels; we make no prediction for the missing Re = 398, Fr = 0.3 setting.</p>
-<p>The training data cover eight of the nine possible (Re, Fr) settings.</p>
+<section id="data-preparation" class="slide level2 smaller">
+<h2>Data Preparation</h2>
+<p>We computed the four statistics from the raw moments in the data. All four are right-skewed and span several orders of magnitude, with kurtosis ranging from about 151 to 132,137, so we modeled the log of each statistic and used log(St) as a predictor.</p>
+<p>Re and Fr each take only three values, so we treated them as categorical. A smooth curve through three points cannot be checked against the data, and every hold-out run uses one of the settings we trained on.</p>
+<p>The data come from eight (Re, Fr) settings. The combination Re = 398 with Fr = 0.3 was never simulated, so our model has no term for it.</p>
 </section>
-<section id="how-we-chose-the-model" class="slide level2 smaller">
-<h2>How we chose the model</h2>
-<p>We compared four linear models and a GAM using leave-one-out cross-validation.</p>
+<section id="model-selection" class="slide level2 smaller">
+<h2>Model Selection</h2>
+<p>We compared four linear models and a GAM using leave-one-out cross-validation, which refits each model 89 times with one run held out and measures the prediction error on that run.</p>
 <div class="cell">
 <div class="cell-output-display">
 <table class="caption-top" style="width:100%;">
@@ -189,7 +213,7 @@ Sherry He, Megan Kolenski, Ian Le, Aaron Siminou
 <td style="text-align: right;">1.3252</td>
 </tr>
 <tr class="even">
-<td style="text-align: left;">Interaction Model 1</td>
+<td style="text-align: left;">Model 1</td>
 <td style="text-align: right;">13</td>
 <td style="text-align: right;">0.0104</td>
 <td style="text-align: right;">0.3290</td>
@@ -197,7 +221,7 @@ Sherry He, Megan Kolenski, Ian Le, Aaron Siminou
 <td style="text-align: right;">0.2119</td>
 </tr>
 <tr class="odd">
-<td style="text-align: left;">Interaction Model 2</td>
+<td style="text-align: left;">Model 2</td>
 <td style="text-align: right;">9</td>
 <td style="text-align: right;">0.0114</td>
 <td style="text-align: right;">0.2565</td>
@@ -205,7 +229,7 @@ Sherry He, Megan Kolenski, Ian Le, Aaron Siminou
 <td style="text-align: right;">0.1656</td>
 </tr>
 <tr class="even">
-<td style="text-align: left;">Cubic Model (final)</td>
+<td style="text-align: left;">Cubic (final)</td>
 <td style="text-align: right;">11</td>
 <td style="text-align: right;"><strong>0.0093</strong></td>
 <td style="text-align: right;"><strong>0.1377</strong></td>
@@ -224,31 +248,40 @@ Sherry He, Megan Kolenski, Ian Le, Aaron Siminou
 </table>
 </div>
 </div>
-<p>The cubic model had the lowest LOOCV error for all four statistics. It keeps the Re-by-Fr interaction and adds a curved relationship with St; the more flexible GAM had higher error for each response.</p>
+<p>Adding an interaction between Re and Fr (Model 2) gave the largest improvement over the baseline. Letting the effect of St change across settings (Model 1 and the GAM) made predictions worse, while letting St follow one shared curve (the cubic model) made them better. The cubic model had the lowest error for all four statistics.</p>
 </section>
-<section id="checking-the-fit" class="slide level2">
-<h2>Checking the fit</h2>
+<section id="checking-fit" class="slide level2 smaller">
+<h2>Checking Fit</h2>
 
-<img data-src="slides_files/figure-revealjs/unnamed-chunk-3-1.png" width="1152" class="r-stretch"><p>In the baseline, whole groups of runs sit above or below zero for skewness and kurtosis, which shows that the effect of Re depends on Fr.&nbsp;The cubic model captures this interaction and the curvature in St, with <span class="math inline">\(R^2\)</span> between 0.974 and 0.999. Residuals are centered around zero, though tail departures from normality remain and some spread remains for standard deviation.</p>
+<img data-src="slides_files/figure-revealjs/unnamed-chunk-3-1.png" style="width:100.0%" class="r-stretch"><p>In the baseline, whole groups of runs sit above or below zero for skewness and kurtosis, which shows that the effect of Re depends on Fr.&nbsp;The cubic model removes these patterns, with R² between 0.974 and 0.999. Its residuals are centered around zero, although the tails are heavier than normal and some uneven spread remains for standard deviation.</p>
 </section>
-<section id="observed-and-predicted-values" class="slide level2">
-<h2>Observed and predicted values</h2>
+<section id="parameters" class="slide level2 smaller">
+<h2>Parameters</h2>
 
-<img data-src="slides_files/figure-revealjs/unnamed-chunk-4-1.png" width="1152" class="r-stretch"><p>The dashed line indicates perfect agreement. Re levels are represented by rows, Fr levels are represented by marker shapes, and St by color. Predictions use all three parameters, including the square and cubic terms of log(St).</p>
+<img data-src="slides_files/figure-revealjs/unnamed-chunk-4-1.png" style="width:100.0%" class="r-stretch"><p>Lines show the cubic model and points show the observed runs. Every setting shares the same curve in St, shifted up or down by Re and Fr.</p>
 </section>
-<section id="key-findings" class="slide level2">
-<h2>Key findings</h2>
+<section id="key-findings" class="slide level2 smaller">
+<h2>Key Findings</h2>
 <ul>
-<li><strong>Turbulence controls cluster size.</strong> Under strong gravity, raising Re from 90 to 398 makes the mean cluster volume about 410 times smaller and standard deviation about 340 times smaller. With no gravity, the reductions are about 250 times for the mean and 9.6 times for standard deviation.</li>
-<li><strong>Strong gravity creates heavy tails, but only when turbulence is weak.</strong> At Re = 90, strong gravity raises kurtosis about 244 times compared with no gravity. The effect drops to about 9 times at Re = 224 and is small at Re = 398, as turbulence overwhelms gravitational settling.</li>
-<li><strong>Moderate gravity behaves much like no gravity.</strong> In the cubic model, fitted effects for Fr = 0.3 and Fr = <span class="math inline">\(\infty\)</span> are similar across the four responses.</li>
-<li><strong>The St relationship is curved.</strong> The change in each statistic depends on where St lies in its range, so one doubling percentage does not summarize the fitted effect. The model uses a shared St curve across Re and Fr settings, with different response levels by setting.</li>
+<li><strong>Turbulence controls cluster size.</strong> Under strong gravity, raising Re from 90 to 398 makes the mean cluster volume about 410 times smaller and the standard deviation about 340 times smaller, which fits the idea that stronger turbulence breaks particles into smaller clusters.</li>
+<li><strong>Strong gravity creates heavy tails, but only when turbulence is weak.</strong> At Re = 90, strong gravity raises kurtosis about 240 times compared with no gravity. The effect drops to about 9 times at Re = 224 and almost disappears at Re = 398, as turbulence overwhelms gravitational settling.</li>
+<li><strong>Moderate gravity behaves like no gravity.</strong> The fitted effects for Fr = 0.3 and Fr = ∞ are close for all four statistics.</li>
+<li><strong>Particle inertia has a curved effect.</strong> The standard deviation rises about 9 times as St goes from 0.05 to 0.5 and levels off after that, while skewness and kurtosis peak near St = 0.2.</li>
 </ul>
 </section>
-<section id="predictions-and-limitations" class="slide level2">
-<h2>Predictions and limitations</h2>
-<p>For the 23 hold-out runs, we report 95% prediction intervals computed on the log scale. The upper bound is typically about 1.4 times the lower bound for the mean, 2.2 times for skewness, 4.1 times for kurtosis, and 3.8 times for standard deviation. The mean is predicted most precisely.</p>
-<p>The main limitations are the small design, with only three levels of Re and Fr and no runs at Re = 398 with Fr = 0.3, remaining residual departures from normality and spread, and possible correlation among runs from the same simulation. Predictions at St = 0.05 are at the observed range boundary. New simulations at intermediate Re and Fr values and at the missing setting would address these gaps most directly.</p>
+<section id="predictions-and-limitations" class="slide level2 smaller">
+<h2>Predictions and Limitations</h2>
+<p><strong>Predictions</strong></p>
+<ul>
+<li>We predicted all four statistics for the 23 hold-out runs, with 95% prediction intervals computed as well.</li>
+</ul>
+<p><strong>Limitations</strong></p>
+<ul>
+<li>The data set is small, at only 89 observations.</li>
+<li>The data set is “sparse”, with Re and Fr having only 3 levels and no runs at (Re = 398, Fr = 0.3).</li>
+<li>Runs from the same simulation may be correlated, which might violate the independence assumption.</li>
+<li>New simulations at intermediate Re and Fr values and at the missing setting would address these gaps most directly.</li>
+</ul>
 
 </section>
     </div>
@@ -287,7 +320,7 @@ Sherry He, Megan Kolenski, Ian Le, Aaron Siminou
 'autoAnimateUnmatched': true,
 'jumpToSlide': true,
 'menu': {"side":"left","useTextContentForMissingTitles":true,"markers":false,"loadIcons":false,"custom":[{"title":"Tools","icon":"<i class=\"fas fa-gear\"></i>","content":"<ul class=\"slide-menu-items\">\n<li class=\"slide-tool-item active\" data-item=\"0\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.fullscreen(event)\"><kbd>f</kbd> Fullscreen</a></li>\n<li class=\"slide-tool-item\" data-item=\"1\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.speakerMode(event)\"><kbd>s</kbd> Speaker View</a></li>\n<li class=\"slide-tool-item\" data-item=\"2\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.overview(event)\"><kbd>o</kbd> Slide Overview</a></li>\n<li class=\"slide-tool-item\" data-item=\"3\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.togglePdfExport(event)\"><kbd>e</kbd> PDF Export Mode</a></li>\n<li class=\"slide-tool-item\" data-item=\"4\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.toggleScrollView(event)\"><kbd>r</kbd> Scroll View Mode</a></li>\n<li class=\"slide-tool-item\" data-item=\"5\"><a href=\"#\" onclick=\"RevealMenuToolHandlers.keyboardHelp(event)\"><kbd>?</kbd> Keyboard Help</a></li>\n</ul>"}],"openButton":true},
-'smaller': true,
+'smaller': false,
  
         // Display controls in the bottom right corner
         controls: false,
@@ -440,7 +473,7 @@ Sherry He, Megan Kolenski, Ian Le, Aaron Siminou
         margin: 0.1,
 
         math: {
-          mathjax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js',
+          mathjax: 'https://cdn.jsdelivr.net/npm/mathjax@2.7.9/MathJax.js',
           config: 'TeX-AMS_HTML-full',
           tex2jax: {
             inlineMath: [['\\(','\\)']],
@@ -505,190 +538,173 @@ Sherry He, Megan Kolenski, Ian Le, Aaron Siminou
     </script>
 
     <script id="quarto-html-after-body" type="application/javascript">
-    window.document.addEventListener("DOMContentLoaded", function (event) {
-      const toggleBodyColorMode = (bsSheetEl) => {
-        const mode = bsSheetEl.getAttribute("data-mode");
-        const bodyEl = window.document.querySelector("body");
-        if (mode === "dark") {
-          bodyEl.classList.add("quarto-dark");
-          bodyEl.classList.remove("quarto-light");
-        } else {
-          bodyEl.classList.add("quarto-light");
-          bodyEl.classList.remove("quarto-dark");
-        }
-      }
-      const toggleBodyColorPrimary = () => {
-        const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
-        if (bsSheetEl) {
-          toggleBodyColorMode(bsSheetEl);
-        }
-      }
-      toggleBodyColorPrimary();  
-      const tabsets =  window.document.querySelectorAll(".panel-tabset-tabby")
-      tabsets.forEach(function(tabset) {
-        const tabby = new Tabby('#' + tabset.id);
-      });
-      const isCodeAnnotation = (el) => {
-        for (const clz of el.classList) {
-          if (clz.startsWith('code-annotation-')) {                     
-            return true;
+      window.document.addEventListener("DOMContentLoaded", function (event) {
+        const tabsets =  window.document.querySelectorAll(".panel-tabset-tabby")
+        tabsets.forEach(function(tabset) {
+          const tabby = new Tabby('#' + tabset.id);
+        });
+        const isCodeAnnotation = (el) => {
+          for (const clz of el.classList) {
+            if (clz.startsWith('code-annotation-')) {                     
+              return true;
+            }
           }
+          return false;
         }
-        return false;
-      }
-      const onCopySuccess = function(e) {
-        // button target
-        const button = e.trigger;
-        // don't keep focus
-        button.blur();
-        // flash "checked"
-        button.classList.add('code-copy-button-checked');
-        var currentTitle = button.getAttribute("title");
-        button.setAttribute("title", "Copied!");
-        let tooltip;
-        if (window.bootstrap) {
-          button.setAttribute("data-bs-toggle", "tooltip");
-          button.setAttribute("data-bs-placement", "left");
-          button.setAttribute("data-bs-title", "Copied!");
-          tooltip = new bootstrap.Tooltip(button, 
-            { trigger: "manual", 
-              customClass: "code-copy-button-tooltip",
-              offset: [0, -8]});
-          tooltip.show();    
-        }
-        setTimeout(function() {
-          if (tooltip) {
-            tooltip.hide();
-            button.removeAttribute("data-bs-title");
-            button.removeAttribute("data-bs-toggle");
-            button.removeAttribute("data-bs-placement");
+        const onCopySuccess = function(e) {
+          // button target
+          const button = e.trigger;
+          // don't keep focus
+          button.blur();
+          // flash "checked"
+          button.classList.add('code-copy-button-checked');
+          var currentTitle = button.getAttribute("title");
+          button.setAttribute("title", "Copied!");
+          let tooltip;
+          if (window.bootstrap) {
+            button.setAttribute("data-bs-toggle", "tooltip");
+            button.setAttribute("data-bs-placement", "left");
+            button.setAttribute("data-bs-title", "Copied!");
+            tooltip = new bootstrap.Tooltip(button, 
+              { trigger: "manual", 
+                customClass: "code-copy-button-tooltip",
+                offset: [0, -8]});
+            tooltip.show();    
           }
-          button.setAttribute("title", currentTitle);
-          button.classList.remove('code-copy-button-checked');
-        }, 1000);
-        // clear code selection
-        e.clearSelection();
-      }
-      const getTextToCopy = function(trigger) {
-          const codeEl = trigger.previousElementSibling.cloneNode(true);
+          setTimeout(function() {
+            if (tooltip) {
+              tooltip.hide();
+              button.removeAttribute("data-bs-title");
+              button.removeAttribute("data-bs-toggle");
+              button.removeAttribute("data-bs-placement");
+            }
+            button.setAttribute("title", currentTitle);
+            button.classList.remove('code-copy-button-checked');
+          }, 1000);
+          // clear code selection
+          e.clearSelection();
+        }
+        const getTextToCopy = function(trigger) {
+          const outerScaffold = trigger.parentElement.cloneNode(true);
+          const codeEl = outerScaffold.querySelector('code');
           for (const childEl of codeEl.children) {
             if (isCodeAnnotation(childEl)) {
               childEl.remove();
             }
           }
           return codeEl.innerText;
-      }
-      const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
-        text: getTextToCopy
-      });
-      clipboard.on('success', onCopySuccess);
-      if (window.document.getElementById('quarto-embedded-source-code-modal')) {
-        const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
-          text: getTextToCopy,
-          container: window.document.getElementById('quarto-embedded-source-code-modal')
-        });
-        clipboardModal.on('success', onCopySuccess);
-      }
-        var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
-        var mailtoRegex = new RegExp(/^mailto:/);
-          var filterRegex = new RegExp('/' + window.location.host + '/');
-        var isInternal = (href) => {
-            return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
         }
-        // Inspect non-navigation links and adorn them if external
-     	var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
-        for (var i=0; i<links.length; i++) {
-          const link = links[i];
-          if (!isInternal(link.href)) {
-            // undo the damage that might have been done by quarto-nav.js in the case of
-            // links that we want to consider external
-            if (link.dataset.originalHref !== undefined) {
-              link.href = link.dataset.originalHref;
+        const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+          text: getTextToCopy
+        });
+        clipboard.on('success', onCopySuccess);
+        if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+          const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+            text: getTextToCopy,
+            container: window.document.getElementById('quarto-embedded-source-code-modal')
+          });
+          clipboardModal.on('success', onCopySuccess);
+        }
+          var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+          var mailtoRegex = new RegExp(/^mailto:/);
+            var filterRegex = new RegExp('/' + window.location.host + '/');
+          var isInternal = (href) => {
+              return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+          }
+          // Inspect non-navigation links and adorn them if external
+         var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+          for (var i=0; i<links.length; i++) {
+            const link = links[i];
+            if (!isInternal(link.href)) {
+              // undo the damage that might have been done by quarto-nav.js in the case of
+              // links that we want to consider external
+              if (link.dataset.originalHref !== undefined) {
+                link.href = link.dataset.originalHref;
+              }
             }
           }
-        }
-      function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
-        const config = {
-          allowHTML: true,
-          maxWidth: 500,
-          delay: 100,
-          arrow: false,
-          appendTo: function(el) {
-              return el.closest('section.slide') || el.parentElement;
-          },
-          interactive: true,
-          interactiveBorder: 10,
-          theme: 'light-border',
-          placement: 'bottom-start',
-        };
-        if (contentFn) {
-          config.content = contentFn;
-        }
-        if (onTriggerFn) {
-          config.onTrigger = onTriggerFn;
-        }
-        if (onUntriggerFn) {
-          config.onUntrigger = onUntriggerFn;
-        }
-          config['offset'] = [0,0];
-          config['maxWidth'] = 700;
-        window.tippy(el, config); 
-      }
-      const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
-      for (var i=0; i<noterefs.length; i++) {
-        const ref = noterefs[i];
-        tippyHover(ref, function() {
-          // use id or data attribute instead here
-          let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
-          try { href = new URL(href).hash; } catch {}
-          const id = href.replace(/^#\/?/, "");
-          const note = window.document.getElementById(id);
-          if (note) {
-            return note.innerHTML;
-          } else {
-            return "";
+        function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+          const config = {
+            allowHTML: true,
+            maxWidth: 500,
+            delay: 100,
+            arrow: false,
+            appendTo: function(el) {
+                return el.closest('section.slide') || el.parentElement;
+            },
+            interactive: true,
+            interactiveBorder: 10,
+            theme: 'light-border',
+            placement: 'bottom-start',
+          };
+          if (contentFn) {
+            config.content = contentFn;
           }
-        });
-      }
-      const findCites = (el) => {
-        const parentEl = el.parentElement;
-        if (parentEl) {
-          const cites = parentEl.dataset.cites;
-          if (cites) {
-            return {
-              el,
-              cites: cites.split(' ')
-            };
-          } else {
-            return findCites(el.parentElement)
+          if (onTriggerFn) {
+            config.onTrigger = onTriggerFn;
           }
-        } else {
-          return undefined;
+          if (onUntriggerFn) {
+            config.onUntrigger = onUntriggerFn;
+          }
+            config['offset'] = [0,0];
+            config['maxWidth'] = 700;
+          window.tippy(el, config); 
         }
-      };
-      var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
-      for (var i=0; i<bibliorefs.length; i++) {
-        const ref = bibliorefs[i];
-        const citeInfo = findCites(ref);
-        if (citeInfo) {
-          tippyHover(citeInfo.el, function() {
-            var popup = window.document.createElement('div');
-            citeInfo.cites.forEach(function(cite) {
-              var citeDiv = window.document.createElement('div');
-              citeDiv.classList.add('hanging-indent');
-              citeDiv.classList.add('csl-entry');
-              var biblioDiv = window.document.getElementById('ref-' + cite);
-              if (biblioDiv) {
-                citeDiv.innerHTML = biblioDiv.innerHTML;
-              }
-              popup.appendChild(citeDiv);
-            });
-            return popup.innerHTML;
+        const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+        for (var i=0; i<noterefs.length; i++) {
+          const ref = noterefs[i];
+          tippyHover(ref, function() {
+            // use id or data attribute instead here
+            let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+            try { href = new URL(href).hash; } catch {}
+            const id = href.replace(/^#\/?/, "");
+            const note = window.document.getElementById(id);
+            if (note) {
+              return note.innerHTML;
+            } else {
+              return "";
+            }
           });
         }
-      }
-    });
-    </script>
+        const findCites = (el) => {
+          const parentEl = el.parentElement;
+          if (parentEl) {
+            const cites = parentEl.dataset.cites;
+            if (cites) {
+              return {
+                el,
+                cites: cites.split(' ')
+              };
+            } else {
+              return findCites(el.parentElement)
+            }
+          } else {
+            return undefined;
+          }
+        };
+        var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+        for (var i=0; i<bibliorefs.length; i++) {
+          const ref = bibliorefs[i];
+          const citeInfo = findCites(ref);
+          if (citeInfo) {
+            tippyHover(citeInfo.el, function() {
+              var popup = window.document.createElement('div');
+              citeInfo.cites.forEach(function(cite) {
+                var citeDiv = window.document.createElement('div');
+                citeDiv.classList.add('hanging-indent');
+                citeDiv.classList.add('csl-entry');
+                var biblioDiv = window.document.getElementById('ref-' + cite);
+                if (biblioDiv) {
+                  citeDiv.innerHTML = biblioDiv.innerHTML;
+                }
+                popup.appendChild(citeDiv);
+              });
+              return popup.innerHTML;
+            });
+          }
+        }
+      });
+      </script>
     
 
 </body></html>

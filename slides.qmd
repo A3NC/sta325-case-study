@@ -98,11 +98,6 @@ test <- read_csv("data/data-test.csv", show_col_types = FALSE) |>
          Fr_f = factor(Fr, levels = levels(data$Fr_f))) |>
   add_st_terms()
 
-interval_ratio <- map_dbl(responses, \(r) {
-  p <- exp(predict(fits[[r]], newdata = test, interval = "prediction"))
-  median(p[, "upr"] / p[, "lwr"])
-})
-
 slide_theme <- theme_minimal(base_size = 16) +
   theme(panel.grid.minor = element_blank(), legend.position = "bottom",
         strip.text = element_text(face = "bold"))
@@ -211,12 +206,11 @@ Lines show the cubic model and points show the observed runs. Every setting shar
 
 **Predictions**
 
-- We predicted all four statistics for the `r nrow(test)` hold-out runs, with 95% prediction intervals computed on the log scale.
-- The upper bound of the interval is typically about `r sprintf("%.1f", interval_ratio[["mean"]])` times the lower bound for the mean, `r sprintf("%.1f", interval_ratio[["skewness"]])` times for skewness, `r sprintf("%.1f", interval_ratio[["sd"]])` times for the standard deviation, and `r sprintf("%.1f", interval_ratio[["kurtosis"]])` times for kurtosis, so the mean is predicted most precisely.
+- We predicted all four statistics for the `r nrow(test)` hold-out runs, with 95% prediction intervals computed as well.
 
 **Limitations**
 
-- The design is small, with only three levels of Re and Fr and no runs at Re = 398 with Fr = 0.3.
-- The residuals have heavier tails than normal, so the intervals may be less accurate, especially at St = 0.05.
-- Runs from the same simulation may be correlated, which could make our intervals slightly too narrow.
+- The data set is small, at only 89 observations.
+- The data set is "sparse", with Re and Fr having only 3 levels and no runs at (Re = 398, Fr = 0.3).
+- Runs from the same simulation may be correlated, which might violate the independence assumption.
 - New simulations at intermediate Re and Fr values and at the missing setting would address these gaps most directly.
