@@ -131,6 +131,16 @@ We pursue two connected goals. First, we predict the mean, standard deviation, s
 
 For prediction, we use response-specific GAMs with a shared smooth of $\log St$ and an $Re \times Fr$ interaction: $k = 5$ for mean and standard deviation, and $k = 4$ for skewness and kurtosis, as selected by LOOCV. 
 
+$$\log(responses) =
+\beta_{0}
++ \beta_1 f_{smooth}(\log(St))
++ \beta_2{Re}
++ \beta_3{Fr}
++ \beta_4{Re:Fr}
++ \epsilon.
+$$
+
+
 # Methodology
 
 ## Responses and transformations
