@@ -141,7 +141,7 @@ Each run reports the first four raw moments of its cluster-volume distribution, 
 
 We compared the linear candidates and two GAM specifications by leave-one-out cross-validation (LOOCV), holding out one run at a time and measuring prediction error on the log-response scale (Table 1). The linear candidates include additive and interaction models, a cubic polynomial in $\log St$, and a natural spline with 4 degrees of freedom. The natural spline and cubic model both allow a nonlinear $St$ effect while retaining the $Re \times Fr$ interaction. Each GAM uses the same $Re \times Fr$ terms and a shared smooth of $\log St$; its smoothness is estimated by REML. The basis dimension $k$ sets the maximum flexibility of the smooth, and we compared $k = 4$ and $k = 5$.
 
-The lowest LOOCV error depends on the response: the $k = 5$ GAM performs best for mean and standard deviation, while the $k = 4$ GAM performs best for skewness and kurtosis. We therefore use the corresponding GAM for each response rather than selecting one specification for all four. The bold entries in Table 1 identify each response's lowest-error candidate. The GAM parameter counts are effective degrees of freedom (EDF) for the mean-response fit; the EDF can differ by response.
+The lowest LOOCV error depends on the response: the $k = 5$ GAM performs best for mean and standard deviation, while the $k = 4$ GAM performs best for skewness and kurtosis. We therefore use the corresponding GAM for each response rather than selecting one specification for all four. The bold entries in Table 1 identify each response's lowest-error candidate. The GAM parameter counts are effective degrees of freedom (EDF) for the mean-response fit; the EDF can differ by response. For inference, we use the cubic model, which describes the $St$ effect with a closed-form curve and standard linear-model confidence intervals. Its inferential conclusions also agree with the GAMs'. We use the best GAM for each prediction task.
 
 ```{r}
 loocv |>
@@ -268,7 +268,7 @@ st_effect |>
   theme(panel.grid.minor = element_blank())
 ```
 
-**Particle inertia (**$St$) has a smaller, nonlinear effect. @fig-st shows the effect of $St$ relative to $St = 1$. Mean cluster volume rises with $St$, the standard deviation rises steeply at low $St$ and then levels off, and skewness and kurtosis peak at intermediate $St$ before declining. The cubic and GAM curves agree closely, so these conclusions do not depend on the polynomial form, and the bands widen near $St = 0.05$, where the model fits least well. Because the slope changes across the range, no single "doubling $St$" percentage summarizes the effect;
+**Particle inertia (**$St$) has a smaller, nonlinear effect. @fig-st shows the effect of $St$ relative to $St = 1$. Mean cluster volume rises with $St$, the standard deviation rises steeply at low $St$ and then levels off, and skewness and kurtosis peak at intermediate $St$ before declining. The cubic and GAM curves agree closely, so these conclusions do not depend on the polynomial form, and the bands widen near $St = 0.05$, where the model fits least well. Because the slope changes across the range, no single "doubling $St$" percentage summarizes the effect.
 
 # Conclusion
 
@@ -276,7 +276,7 @@ Each parameter shapes the cluster-size distribution in a different way. Turbulen
 
 ## Limitations and future work
 
-The model can only predict at the 3 simulated levels of $Re$ and $Fr$: because it treats them as categorical, it cannot interpolate between levels or extrapolate beyond them, and snapping a new input to the nearest level would ignore the difference between levels. Future simulations should therefore be spread off the grid. The current grid spends all 89 runs on 3 levels each of $Re$ and $Fr$, and refining it scales badly: adding a fourth level of each parameter raises a full grid from $3^3 = 27$ to $4^3 = 64$ settings. A space-filling design gives every run new values of all three parameters, so the same budget covers far more of the input space and lets $Re$ and $Fr$ be treated as continuous.
+The model can only predict at the 3 simulated levels of $Re$ and $Fr$: because it treats them as categorical, it cannot interpolate between levels or extrapolate beyond them, and snapping a new input to the nearest level would ignore the difference between levels. Future simulations should therefore be spread off the grid. The current grid spends all 89 runs on 3 levels each of $Re$ and $Fr$, and refining it scales badly: adding a fourth level of each parameter raises a full grid from $3^3 = 27$ to $4^3 = 64$ settings. A space-filling design gives every run new values of all three parameters, so the same compute budget covers far more of the input space and lets $Re$ and $Fr$ be treated as continuous.
 
 {{< pagebreak >}}
 
@@ -285,7 +285,7 @@ The model can only predict at the 3 simulated levels of $Re$ and $Fr$: because i
 ```{r}
 #| label: fig-resid
 #| fig-cap: "Residuals against fitted values for the additive baseline (top) and the response-specific selected GAMs (bottom)."
-#| fig-height: 1.7
+#| fig-height: 2.4
 #| fig-width: 7
 residual_diagnostics <- bind_rows(
   imap_dfr(fits_baseline, \(m, r) tibble(model = "Baseline", response = r,
@@ -294,7 +294,7 @@ residual_diagnostics <- bind_rows(
                                             fitted = fitted(m), residual = resid(m)))
 )
 residual_diagnostics |>
-  mutate(response = factor(response, levels = response_labels),
+  mutate(response = factor(response_labels[response], levels = response_labels),
          model = factor(model, levels = c("Baseline", "Selected GAM"))) |>
   ggplot(aes(fitted, residual)) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
