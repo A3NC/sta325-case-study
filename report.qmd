@@ -94,6 +94,9 @@ gam_fit <- map(
   responses,
   \(r) gam(gam_formula(r, gam_candidates[["GAM (k = 5)"]]), data = data, method = "REML")
 )
+
+gam_edf <- map_dbl(gam_fit, \(g) sum(g$edf))
+
 fits <- map(responses, \(r) lm(model_formula(r, candidates[["Cubic Model"]]), data = data))
 
 r_squared <- map_dbl(fits, \(m) summary(m)$r.sq)
@@ -159,7 +162,7 @@ loocv |>
         caption = "LOOCV MSE (log scale) for each candidate model. For the GAM, the parameter count is its effective degrees of freedom for the mean.")
 ```
 
-To check whether the polynomial distorts the effect of $St$, we also fit a generalized additive model (GAM) that replaces the polynomial with a smoothing spline in $\log St$. Like the cubic model, it uses one curve shared across $(Re, Fr)$ combinations plus a level for each combination; separate curves for each combination would overfit, since each has only 9 to 14 runs. We chose its smoothness by REML. The tuned GAM used `r sprintf("%.0f", min(gam_edf))` to `r sprintf("%.0f", max(gam_edf))` effective degrees of freedom and predicted about as well as the cubic model (average LOOCV MSE of `r sprintf("%.3f", avg_mse[["GAM (tuned)"]])` versus `r sprintf("%.3f", avg_mse[["Cubic Model"]])`), with nearly the same $St$ curve (@fig-st). We kept the cubic model, whose coefficients are simpler to report.
+To check whether the polynomial distorts the effect of $St$, we also fit a generalized additive model (GAM) that replaces the polynomial with a smoothing spline in $\log St$. Like the cubic model, it uses one curve shared across $(Re, Fr)$ combinations plus a level for each combination; separate curves for each combination would overfit, since each has only 9 to 14 runs. We chose its smoothness by REML. The tuned GAM used `r sprintf("%.0f", min(gam_edf))` to `r sprintf("%.0f", max(gam_edf))` effective degrees of freedom and predicted about as well as the cubic model (average LOOCV MSE of `r sprintf("%.3f", avg_mse[["GAM (k = 5)"]])` versus `r sprintf("%.3f", avg_mse[["Cubic Model"]])`), with nearly the same $St$ curve (@fig-st). We kept the cubic model, whose coefficients are simpler to report.
 
 ## Diagnostics
 The cubic model fits all 4 responses well, with $R^2$ between `r sprintf("%.3f", min(r_squared))` and `r sprintf("%.3f", max(r_squared))`. In the baseline model's residuals, whole $(Re, Fr)$ groups sit above or below 0 for skewness and kurtosis, which shows that the effect of $Re$ depends on $Fr$; the cubic model removes these patterns (@fig-resid in the Appendix), although some uneven spread remains for standard deviation. The largest negative residuals mostly come from runs at the smallest Stokes number, $St = 0.05$, where the model predicts values that are too high. Runs with the same $Re$ and $Fr$ likely come from the same simulated flow, so they may not be fully independent, which could make our intervals slightly too narrow.
@@ -234,16 +237,22 @@ st_grid <- tibble(St = exp(seq(log(min(data$St)), log(max(data$St)), length.out 
   mutate(x = log(St))
 st_terms <- c("log_St", "log_St_sq", "log_St_cubic")
 X_st <- cbind(st_grid$x, st_grid$x^2, st_grid$x^3)
-base_group <- factor(levels(data$group)[1], levels = levels(data$group))
+base_cell <- data |>
+  distinct(Re_f, Fr_f) |>
+  slice(1)
+gam_newdata <- tibble(log_St = st_grid$x) |>
+  bind_cols(base_cell[rep(1, nrow(st_grid)), ])
+gam_reference <- tibble(log_St = 0) |>
+  bind_cols(base_cell)
 
 st_effect <- imap_dfr(fits, \(m, r) {
   b <- coef(m)[st_terms]
   V <- vcov(m)[st_terms, st_terms]
   est <- drop(X_st %*% b)
   se <- sqrt(rowSums((X_st %*% V) * X_st))
-  g <- gam_fits[[r]]
-  gam_est <- as.numeric(predict(g, tibble(log_St = st_grid$x, group = base_group))) -
-    as.numeric(predict(g, tibble(log_St = 0, group = base_group)))
+  g <- gam_fit[[r]]
+  gam_est <- as.numeric(predict(g, gam_newdata)) -
+    as.numeric(predict(g, gam_reference))
   st_grid |>
     mutate(response = response_labels[[r]], est = est,
            lower = est - 1.96 * se, upper = est + 1.96 * se, gam = gam_est)
