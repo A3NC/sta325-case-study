@@ -51,9 +51,11 @@ candidates <- c(
   "Baseline (additive)" = "log_St + Re_f + Fr_f",
   "Interaction Model 1" = "log_St * (Re_f + Fr_f) + Re_f:Fr_f",
   "Interaction Model 2" = "log_St + Re_f * Fr_f",
-  ## NEW MODEL TEST
   "Cubic Model" = "log_St + log_St_sq + log_St_cubic
-                            + Re_f * Fr_f"
+                            + Re_f * Fr_f",
+  "Natural spline (3 df)" = "splines::ns(log_St, df = 3) + Re_f * Fr_f",
+  "Natural spline (4 df)" = "splines::ns(log_St, df = 4) + Re_f * Fr_f",
+  "Natural spline (5 df)" = "splines::ns(log_St, df = 5) + Re_f * Fr_f"
 )
 model_formula <- \(r, rhs) as.formula(paste0("log(", r, ") ~ ", str_squish(rhs)))
 
@@ -64,12 +66,19 @@ loocv_lm <- expand_grid(model = names(candidates), response = responses) |>
     n_par = map_dbl(model, \(m) lm(model_formula("mean", candidates[[m]]), data = data)$rank)
   )
 
-gam_formula <- \(r) model_formula(r, "group + s(log_St, by = group, k = 4)")
-loocv_gam <- tibble(model = "GAM", response = responses) |>
+gam_candidates <- c(
+  "Common GAM (k = 4)" = "Re_f * Fr_f + s(log_St, k = 4)",
+  "Common GAM (k = 5)" = "Re_f * Fr_f + s(log_St, k = 5)",
+  "Common GAM (k = 6)" = "Re_f * Fr_f + s(log_St, k = 6)"
+)
+gam_formula <- \(r, rhs) model_formula(r, rhs)
+loocv_gam <- expand_grid(model = names(gam_candidates), response = responses) |>
   mutate(
-    mse = map_dbl(response, \(r) mean(map_dbl(seq_len(nrow(data)), \(i)
-      (log(data[[r]][i]) - predict(gam(gam_formula(r), data = data[-i, ], method = "REML"), data[i, ]))^2))),
-    n_par = round(sum(gam(gam_formula("mean"), data = data, method = "REML")$edf))
+    mse = map2_dbl(model, response, \(m, r) mean(map_dbl(seq_len(nrow(data)), \(i)
+      (log(data[[r]][i]) - predict(gam(gam_formula(r, gam_candidates[[m]]),
+                                      data = data[-i, ], method = "REML"), data[i, ]))^2))),
+    n_par = map_dbl(model, \(m) round(sum(gam(gam_formula("mean", gam_candidates[[m]]),
+                                             data = data, method = "REML")$edf), 1))
   )
 
 loocv <- bind_rows(loocv_lm, loocv_gam)
@@ -79,9 +88,10 @@ cv <- loocv |>
   column_to_rownames("model")
 
 fits_baseline <- map(responses, \(r) lm(model_formula(r, candidates[["Baseline (additive)"]]), data = data))
-fits <- map(responses, \(r) lm(model_formula(r, candidates[["Cubic Model"]]), data = data))
-fits_cubic <- fits
-r_squared <- map_dbl(fits, \(m) summary(m)$r.squared)
+fits_cubic <- map(responses, \(r) lm(model_formula(r, candidates[["Cubic Model"]]), data = data))
+final_gam_rhs <- gam_candidates[["Common GAM (k = 5)"]]
+fits <- map(responses, \(r) gam(gam_formula(r, final_gam_rhs), data = data, method = "REML"))
+r_squared <- map_dbl(fits, \(m) summary(m)$r.sq)
 ```
 
 ```{r}
@@ -91,7 +101,7 @@ boxcox_profile <- \(fit, r) {
   tibble(lambda = p$x, loglik = p$y - max(p$y))
 }
 
-bc_profiles <- imap(fits, boxcox_profile)
+bc_profiles <- imap(fits_cubic, boxcox_profile)
 bc <- map_dfr(bc_profiles, \(p) {
   ci <- range(p$lambda[p$loglik > -qchisq(0.95, 1) / 2])
   tibble(lambda = p$lambda[which.max(p$loglik)], lower = ci[1], upper = ci[2])
@@ -111,18 +121,15 @@ Our key research objectives are:
 1. **Prediction:** predict the first 4 moments of the cluster-volume distribution at new $(Re, Fr, St)$ settings as a fast substitute for running a new simulation. Full computer simulations are expensive and slow: a full run for a single $(Re, Fr, St)$ setting can take days or longer, while a fitted statistical model returns a prediction in seconds. A good predictive model lets our collaborators explore new parameter settings almost instantly instead of waiting for days.
 2. **Inference:** Explaining how each parameter affects the response
 
-Our final model is as follows, where $Re_{224}$, $Re_{398}$, $Fr_{0.3}$, and $Fr_{\infty}$ are 0/1 indicators for each level (baseline $Re = 90$, $Fr = 0.052$).
+Our final model is a separate generalized additive model for each response. Here $Re_{224}$, $Re_{398}$, $Fr_{0.3}$, and $Fr_{\infty}$ are 0/1 indicators for each level (baseline $Re = 90$, $Fr = 0.052$), and $f$ is one smooth function shared across the observed $(Re, Fr)$ settings.
 
 $$
-\begin{aligned}
-\log{\text{responses}} = {} & \beta_0 + \beta_1 \log{St} + \beta_2 (\log{St})^2 + \beta_3 (\log{St})^3 + \beta_4 Re_{224} + \beta_5 Re_{398} + \beta_6 Fr_{0.3} + \beta_7 Fr_{\infty}\\
-& + \beta_8 Re_{224} Fr_{0.3} + \beta_9 Re_{224} Fr_{\infty} + \beta_10 Re_{398} Fr_{\infty} + \varepsilon, \qquad \varepsilon \sim N(0, \sigma^2)
-\end{aligned}
+\log{\text{response}} = \beta_0 + \alpha_{Re} + \gamma_{Fr} + \delta_{Re \times Fr} + f(\log{St}) + \varepsilon, \qquad \varepsilon \sim N(0, \sigma^2).
 $$
 
-A separate model is fit for each of the 4 response variables, so each one has its own coefficients. There is no $Re_{398} Fr_{0.3}$ term because the dataset has no observations at $Re = 398$, $Fr = 0.3$.
+A separate model is fit for each of the 4 response variables, so each one has its own coefficients and smooth. There is no $Re_{398} Fr_{0.3}$ term because the dataset has no observations at $Re = 398$, $Fr = 0.3$.
 
-This model addresses both objectives. For prediction, it achieves a LOOCV MSE of `r sprintf("%.3f", mean(unlist(cv["Cubic Model", ])))` when averaged across the 4 response variables. For inference, the categorical terms describe differences among $Re$ and $Fr$ settings, while the polynomial terms allow the effect of $St$ to vary across its range.
+This model addresses both objectives. For prediction, it achieves a LOOCV MSE of `r sprintf("%.3f", mean(unlist(cv["Common GAM (k = 5)", ])))` when averaged across the 4 response variables. For inference, the categorical terms describe differences among $Re$ and $Fr$ settings, while the smooth allows the effect of $St$ to vary across its range.
 
 # Methodology
 
@@ -140,12 +147,12 @@ We also log-transformed $St$ because it is right-skewed (skewness of `r sprintf(
 
 ## Modeling
 
-We compared linear models with a generalized additive model (GAM), which fits a separate smooth curve in $\log{St}$ for each $(Re, Fr)$ combination. The GAM had a higher LOOCV MSE than the cubic model for all 4 response variables (see the table below). We selected the cubic model because it had the lowest LOOCV MSE among the candidates while retaining a compact polynomial form.
+We compared the cubic polynomial to natural cubic splines and GAMs. Cubic polynomials can behave poorly near the boundary of the design, whereas a natural spline is constrained to be linear beyond its boundary knots and a GAM controls curvature with a smoothing penalty. All nonlinear candidates use a common $St$ curve plus a $Re \times Fr$ interaction. We deliberately did not retain the earlier group-specific GAM, which estimated a separate curve for each $(Re, Fr)$ group and was too flexible for only 14 observed $St$ values.
 
-We fitted 4 linear models for comparison. All models predict the log of each response. The baseline model has no interaction terms. Interaction Model 1 adds interactions of $\log{St}$ with both $Re$ and $Fr$, as well as $Re \times Fr$. Interaction Model 2 adds only $Re \times Fr$. The cubic model adds $\log{St}^2$ and $\log{St}^3$ on top of Interaction Model 2. These candidates were guided by the EDA, which showed strong relationships with $St$, $Re$, and $Fr$.
+All models predict the log of each response. The baseline model has no interaction terms. Interaction Model 1 adds interactions of $\log{St}$ with both $Re$ and $Fr$, as well as $Re \times Fr$. Interaction Model 2 adds only $Re \times Fr$. The cubic and natural-spline candidates add increasingly flexible common $St$ effects to Interaction Model 2. We tuned natural-spline degrees of freedom (3, 4, and 5) and the GAM basis dimension ($k=4,5,6$) by LOOCV; REML selects the GAM's smoothing penalty within each training fold.
 
 
-Averaged across the 4 response variables, the LOOCV MSE was `r sprintf("%.3f", mean(unlist(cv["Baseline (additive)", ])))` for the baseline model, `r sprintf("%.3f", mean(unlist(cv["Interaction Model 1", ])))` for Interaction Model 1, `r sprintf("%.3f", mean(unlist(cv["Interaction Model 2", ])))` for Interaction Model 2, and `r sprintf("%.3f", mean(unlist(cv["Cubic Model", ])))` for the cubic model. The cubic model had the lowest LOOCV MSE for all four response variables, so we selected it as our final model.
+Averaged across the 4 response variables, the LOOCV MSE was `r sprintf("%.3f", mean(unlist(cv["Baseline (additive)", ])))` for the baseline model, `r sprintf("%.3f", mean(unlist(cv["Interaction Model 2", ])))` for the $Re \times Fr$ model, `r sprintf("%.3f", mean(unlist(cv["Cubic Model", ])))` for the cubic, and `r sprintf("%.3f", mean(unlist(cv["Common GAM (k = 5)", ])))` for the selected GAM. The GAM with $k=5$ had the lowest average LOOCV MSE and avoided the cubic's boundary behavior, so we selected it as our final model. The table reports the full tuning comparison for each response.
 
 ```{r}
 loocv |>
@@ -159,13 +166,13 @@ loocv |>
         caption = "Comparison of LOOCV MSE accross different models")
 ```
 
-For the GAM, the parameter count is its effective degrees of freedom.
+For the GAM, the parameter count is its effective degrees of freedom; it is reported for the mean model as a compact reference because REML can select slightly different smoothness for the other responses.
 
 $Re$ and $Fr$ each have only 3 levels, so we treat them as categorical.
 
 ## Diagnostics
 
-The cubic model fits all 4 response variables well, with $R^2$ between `r sprintf("%.3f", min(r_squared))` and `r sprintf("%.3f", max(r_squared))`. The plots below compare the residuals of the baseline model (top) and the cubic model (bottom).
+The selected GAM fits all 4 response variables well, with $R^2$ between `r sprintf("%.3f", min(r_squared))` and `r sprintf("%.3f", max(r_squared))`. The plots below compare the residuals of the baseline model (top) and the selected GAM (bottom).
 
 ```{r}
 #| fig-height: 1.7
@@ -183,9 +190,9 @@ map_dfr(list(Baseline = fits_baseline, "Final model" = fits), \(fit_list)
   theme(panel.grid.minor = element_blank())
 ```
 
-The baseline residuals show clear patterns, especially for skewness and kurtosis, where whole groups of observations sit above or below 0. This means the effect of $Re$ depends on $Fr$. The cubic model accounts for this interaction and curvature in $St$; its residuals are centered around 0, although some variation in spread remains, particularly for standard deviation.
+The baseline residuals show clear patterns, especially for skewness and kurtosis, where whole groups of observations sit above or below 0. This means the effect of $Re$ depends on $Fr$. The selected GAM accounts for this interaction and curvature in $St$; its residuals are centered around 0, although some variation in spread remains, particularly for standard deviation.
 
-The residual distributions still depart from normality, especially in their tails. The cubic terms allow the fitted relationship to bend across the observed $St$ range, but observations at $St = 0.05$ remain worth monitoring because this is the boundary of the design. We kept these observations because there is no sign they are errors.
+The residual distributions still depart from normality, especially in their tails. The penalized smooth allows the fitted relationship to bend across the observed $St$ range, but observations at $St = 0.05$ remain worth monitoring because this is the boundary of the design. We kept these observations because there is no sign they are errors.
 
 The dataset was collected from computer simulation runs, but observations with the same $Re$ and $Fr$ likely come from the same simulation, so they may not be fully independent. This could make our uncertainty estimates slightly too small.
 
@@ -199,14 +206,17 @@ test <- read_csv("data/data-test.csv", show_col_types = FALSE) |>
          log_St_sq = log(St)^2,
          log_St_cubic = log(St)^3)
 
-preds <- map_dfc(responses, \(r) {
-  p <- exp(predict(fits[[r]], newdata = test, interval = "prediction"))
-  tibble(!!r := p[, "fit"],
-         !!paste0(r, "_lower") := p[, "lwr"],
-         !!paste0(r, "_upper") := p[, "upr"])
+preds <- imap_dfc(fits, \(fit, r) {
+  p <- predict(fit, newdata = test, se.fit = TRUE)
+  prediction_se <- sqrt(p$se.fit^2 + fit$sig2)
+  tibble(!!r := as.numeric(exp(p$fit)),
+         !!paste0(r, "_lower") := as.numeric(exp(p$fit - qnorm(0.975) * prediction_se)),
+         !!paste0(r, "_upper") := as.numeric(exp(p$fit + qnorm(0.975) * prediction_se)))
 })
 
 test_out <- bind_cols(test |> select(St, Re, Fr), preds)
+interval_ratios <- map_dbl(responses, \(r)
+  mean(test_out[[paste0(r, "_upper")]] / test_out[[paste0(r, "_lower")]]))
 write_csv(test_out, "predictions.csv")
 ```
 
@@ -214,11 +224,11 @@ write_csv(test_out, "predictions.csv")
 
 We predicted the four statistics at the `r nrow(test)` hold-out settings, with 95% prediction intervals computed on the log scale and then exponentiated, so point predictions estimate medians. All values are provided in `predictions.csv`. Every hold-out setting uses an $(Re, Fr)$ combination and $St$ value within the training range, so no prediction requires extrapolation. The two settings with $St = 0.05$ lie at the boundary of the observed range and should be interpreted with that limitation in mind.
 
-The precision of the predictions varies across the four statistics. Across the hold-out settings, the upper bounds are about 1.4 times the lower bounds for the mean, 3.9 times for standard deviation, 2.2 times for skewness, and 4.1 times for kurtosis. The mean is predicted most precisely, while the standard deviation and kurtosis intervals are widest.
+The precision of the predictions varies across the four statistics. Across the hold-out settings, the upper bounds are about `r sprintf("%.1f", interval_ratios[["mean"]])` times the lower bounds for the mean, `r sprintf("%.1f", interval_ratios[["sd"]])` times for standard deviation, `r sprintf("%.1f", interval_ratios[["skewness"]])` times for skewness, and `r sprintf("%.1f", interval_ratios[["kurtosis"]])` times for kurtosis. The mean is predicted most precisely, while the standard deviation and kurtosis intervals are widest.
 
 ## Effects of each parameter
 
-Because the model is fit on the log scale, exponentiating a contrast gives the multiplicative change in a statistic. Since $Re$ and $Fr$ interact, the gravity contrast at a given $Re$ combines the $Fr$ coefficient with the corresponding interaction coefficient. The polynomial terms mean the effect of $St$ varies across its range rather than remaining a constant multiplier.
+Because the model is fit on the log scale, exponentiating a contrast gives the multiplicative change in a statistic. Since $Re$ and $Fr$ interact, the gravity contrast at a given $Re$ combines the $Fr$ coefficient with the corresponding interaction coefficient. The smooth term means the effect of $St$ varies across its range rather than remaining a constant multiplier.
 
 ```{r}
 #| label: fig-effects
@@ -226,7 +236,6 @@ Because the model is fit on the log scale, exponentiating a contrast gives the m
 #| fig-height: 1.7
 #| fig-width: 7
 #| fig-pos: "t"
-#| eval: FALSE
 grid <- expand_grid(St = exp(seq(log(0.05), log(3), length.out = 50)),
                     Re = c(90, 224, 398), Fr = c(0.052, 0.3, Inf)) |>
   filter(!(Re == 398 & Fr == 0.3)) |>
@@ -259,17 +268,49 @@ bind_rows(pred_grid, obs) |>
   theme(panel.grid.minor = element_blank(), legend.position = "bottom")
 ```
 
-**Turbulence intensity ($Re$) controls cluster size.** Under strong gravity, the cubic model estimates that increasing $Re$ from 90 to 398 shrinks mean cluster volume by about 410 times and standard deviation by about 340 times. With no gravity, the reductions are about 250 times for the mean and 9.6 times for standard deviation. Thus, $Re$ has a large association with mean cluster volume. Under strong gravity, its estimated effects on skewness and kurtosis are small and not statistically distinguishable from zero in this model.
+```{r}
+#| label: fig-st-effect
+#| fig-cap: "Estimated partial effect of particle inertia on the log of each response. Shading is an approximate 95% confidence band; zero is the average smooth effect."
+#| fig-height: 2.2
+#| fig-width: 7
+st_grid <- tibble(
+  St = exp(seq(log(min(data$St)), log(max(data$St)), length.out = 100)),
+  Re_f = factor(90, levels = levels(data$Re_f)),
+  Fr_f = factor(0.052, levels = levels(data$Fr_f))
+) |>
+  mutate(log_St = log(St))
 
-**Strong gravity creates heavy tails, but only when turbulence is weak.** At $Re = 90$, moving from strong gravity ($Fr = 0.052$) to no gravity ($Fr = \infty$) reduces skewness by a factor of about 16 and kurtosis by about 244. Strong gravity is therefore associated with a distribution having many small clusters and occasional very large ones. This effect weakens as $Re$ increases: at $Re = 224$, removing gravity reduces kurtosis by about a factor of 9, and at $Re = 398$ it has little effect. One physical interpretation is that as turbulence strengthens, turbulent velocity fluctuations overwhelm gravitational settling, so the flow rather than gravity determines how particles cluster.
+st_effects <- imap_dfr(fits, \(fit, r) {
+  p <- predict(fit, st_grid, type = "terms", terms = "s(log_St)", se.fit = TRUE)
+  tibble(St = st_grid$St, response = response_labels[[r]],
+         effect = p$fit[, 1], se = p$se.fit[, 1])
+}) |>
+  mutate(lower = effect - qnorm(0.975) * se,
+         upper = effect + qnorm(0.975) * se,
+         response = factor(response, levels = response_labels))
 
-**Moderate gravity behaves like no gravity.** In the cubic model, the fitted effects for $Fr = 0.3$ and $Fr = \infty$ are similar across the four responses. Within the range studied, gravity is most strongly associated with clustering outcomes when it is strong.
+ggplot(st_effects, aes(St, effect)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "#6baed6", alpha = 0.35) +
+  geom_line(color = "#012169") +
+  scale_x_log10() +
+  facet_wrap(~ response, nrow = 1, scales = "free_y") +
+  labs(x = "St (log scale)", y = "Partial effect on log response") +
+  theme_minimal(base_size = 9) +
+  theme(panel.grid.minor = element_blank())
+```
 
-**Particle inertia ($St$) has a curved association with the responses.** The cubic terms allow the relationship between $St$ and each statistic to change in slope across the observed range. A single percentage change for doubling $St$ would therefore be misleading; the fitted curves show the response-specific patterns. The model uses a common curve across $(Re, Fr)$ settings, while allowing the levels of the curves to differ by those settings.
+**Turbulence intensity ($Re$) controls cluster size.** The GAM's fitted contrasts show that increasing $Re$ from 90 to 398 markedly shrinks mean cluster volume and standard deviation, with the reduction in standard deviation weaker under no gravity. Thus, $Re$ has a large association with cluster scale. Under strong gravity, its estimated effects on skewness and kurtosis are comparatively small in this model.
+
+**Strong gravity creates heavy tails, but only when turbulence is weak.** At $Re = 90$, the fitted gravity contrasts show much higher skewness and kurtosis under strong gravity ($Fr = 0.052$) than under no gravity ($Fr = \infty$). Strong gravity is therefore associated with a distribution having many small clusters and occasional very large ones. This effect weakens as $Re$ increases. One physical interpretation is that as turbulence strengthens, turbulent velocity fluctuations overwhelm gravitational settling, so the flow rather than gravity determines how particles cluster.
+
+**Moderate gravity behaves like no gravity.** In the GAM, the fitted effects for $Fr = 0.3$ and $Fr = \infty$ are similar across the four responses. Within the range studied, gravity is most strongly associated with clustering outcomes when it is strong.
+
+**Particle inertia ($St$) has a curved association with the responses.** The selected smooths (Figure @fig-st-effect) allow the relationship between $St$ and each statistic to change in slope across the observed range. A single percentage change for doubling $St$ would therefore be misleading; the confidence bands show where each response-specific curve is most and least precisely estimated. The model uses a common curve across $(Re, Fr)$ settings, while allowing the levels of the curves to differ by those settings.
 
 # Conclusion
 
-Each parameter shapes the cluster-size distribution in a different way. Turbulence intensity is strongly associated with cluster scale, while strong gravity is associated with heavier tails when turbulence is weak. The cubic model also indicates that the association with particle inertia changes across the observed $St$ range. Because gravity's influence varies with turbulence strength, conclusions drawn at one turbulence level should not be assumed to hold at another. The model predicts mean cluster volume most precisely; uncertainty is wider for the other statistics.
+Each parameter shapes the cluster-size distribution in a different way. Turbulence intensity is strongly associated with cluster scale, while strong gravity is associated with heavier tails when turbulence is weak. The GAM also indicates that the association with particle inertia changes across the observed $St$ range. Because gravity's influence varies with turbulence strength, conclusions drawn at one turbulence level should not be assumed to hold at another. The model predicts mean cluster volume most precisely; uncertainty is wider for the other statistics.
 
 ## Limitations and future work
 
@@ -426,7 +467,7 @@ bc |>
 
 ```{r}
 #| label: fig-boxcox
-#| fig-cap: 'Box-Cox profile log-likelihood for each response under the final model, relative to its maximum. Values of $\lambda$ above the dotted line form the 95% interval; the dashed line marks $\lambda = 0$ (the log).'
+#| fig-cap: 'Box-Cox profile log-likelihood for each response under the cubic comparison model, relative to its maximum. Values of $\lambda$ above the dotted line form the 95% interval; the dashed line marks $\lambda = 0$ (the log).'
 #| fig-height: 2.4
 #| fig-width: 8
 bind_rows(bc_profiles, .id = "response") |>
