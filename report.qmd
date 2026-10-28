@@ -90,8 +90,8 @@ This case study explores how three factors affect the clustering of inertial par
 
 Our key research objectives are:
 
-1. Predicting the mean, standard deviation, skewness, and kurtosis of the distribution at a new $(Re, Fr, St)$ observation
-2. Explaining how each parameter affects the response
+1. **Prediction:** predict the first 4 moments of the cluster-volume distribution at new $(Re, Fr, St)$ settings as a fast substitute for running a new simulation. Full computer simulations are expensive and slow: a full run for a single $(Re, Fr, St)$ setting can take days or longer, while a fitted statistical model returns a prediction in seconds. A good predictive model lets our collaborators explore new parameter settings almost instantly instead of waiting for days.
+2. **Inference:** Explaining how each parameter affects the response
 
 Our final model is as follows, where $Re_{224}$, $Re_{398}$, $Fr_{0.3}$, and $Fr_{\infty}$ are 0/1 indicators for each level (baseline $Re = 90$, $Fr = 0.052$).
 
