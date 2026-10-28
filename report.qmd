@@ -89,8 +89,14 @@ cv <- loocv |>
 avg_mse <- rowMeans(cv)
 
 fits_baseline <- map(responses, \(r) lm(model_formula(r, candidates[["Baseline (additive)"]]), data = data))
+
+gam_fit <- map(
+  responses,
+  \(r) gam(gam_formula(r, gam_candidates[["GAM (k = 5)"]]), data = data, method = "REML")
+)
 fits <- map(responses, \(r) lm(model_formula(r, candidates[["Cubic Model"]]), data = data))
-r_squared <- map_dbl(fits, \(m) summary(m)$r.squared)
+
+r_squared <- map_dbl(fits, \(m) summary(m)$r.sq)
 ```
 
 ```{r}
@@ -169,10 +175,8 @@ test <- read_csv("data/data-test.csv", show_col_types = FALSE) |>
          log_St_cubic = log(St)^3)
 
 preds <- map_dfc(responses, \(r) {
-  p <- exp(predict(fits[[r]], newdata = test, interval = "prediction"))
-  tibble(!!r := p[, "fit"],
-         !!paste0(r, "_lower") := p[, "lwr"],
-         !!paste0(r, "_upper") := p[, "upr"])
+  p <- exp(predict(gam_fit[[r]], newdata = test, type = "link"))
+  tibble(!!r := as.numeric(p))
 })
 
 test_out <- bind_cols(test |> select(St, Re, Fr), preds)
@@ -180,7 +184,7 @@ write_csv(test_out, "predictions.csv")
 ```
 
 ## Predictions on the hold-out set
-We predicted the four statistics at the `r nrow(test)` hold-out settings, with 95% prediction intervals computed on the log scale and then exponentiated, so point predictions estimate medians (all values are in `predictions.csv`). Every hold-out setting lies within the training range, so no prediction requires extrapolation, although the two settings at $St = 0.05$ sit at the edge of the design. Precision varies by statistic: the upper bounds are typically about 1.4 times the lower bounds for the mean, 2.2 times for skewness, 3.9 times for standard deviation, and 4.1 times for kurtosis.
+We predicted the four statistics at the `r nrow(test)` hold-out settings (all point predictions are in `predictions.csv`). Because each GAM models the log of a statistic, exponentiating its fitted value gives the predicted median on the original scale. Every hold-out setting lies within the training range, so no prediction requires extrapolation, although the two settings at $St = 0.05$ sit at the edge of the design.
 
 ## Effects of each parameter
 Because the model is fit on the log scale, exponentiated contrasts are multiplicative changes, and because $Re$ and $Fr$ interact, the effect of gravity depends on $Re$. @fig-interaction shows the fitted value of each statistic for every $(Re, Fr)$ combination.
