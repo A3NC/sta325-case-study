@@ -52,7 +52,8 @@ candidates <- c(
   "Baseline (additive)" = "log_St + Re_f + Fr_f",
   "Interaction Model 1" = "log_St * (Re_f + Fr_f) + Re_f:Fr_f",
   "Interaction Model 2" = "log_St + Re_f * Fr_f",
-  "Cubic Model" = "log_St + log_St_sq + log_St_cubic + Re_f * Fr_f"
+  "Cubic Model" = "log_St + log_St_sq + log_St_cubic + Re_f * Fr_f",
+  "Natural spline (4 df)" = "splines::ns(log_St, df = 4) + Re_f * Fr_f" 
 )
 model_formula <- \(r, rhs) as.formula(paste0("log(", r, ") ~ ", str_squish(rhs)))
 
@@ -63,18 +64,21 @@ loocv_lm <- expand_grid(model = names(candidates), response = responses) |>
     n_par = map_dbl(model, \(m) lm(model_formula("mean", candidates[[m]]), data = data)$rank)
   )
 
-# ---- Tuned GAM: one shared smooth in log(St), a level for each (Re, Fr) setting,
-#      smoothness chosen by generalized cross-validation ----
-gam_formula <- \(r) model_formula(r, "group + s(log_St, k = 10)")
-fit_gam <- \(r, d) gam(gam_formula(r), data = d, method = "GCV.Cp")
-gam_fits <- map(responses, \(r) fit_gam(r, data))
-gam_edf <- map_dbl(gam_fits, \(g) sum(g$edf))
+# ---- Tuned GAM: one shared smooth in log(St), main effects of Re and Fr plus interaction,
+#      smoothness chosen by REML ----
 
-loocv_gam <- tibble(model = "GAM (tuned)", response = responses) |>
+gam_candidates <- c(
+  "GAM (k = 4)" = "Re_f * Fr_f + s(log_St, k = 4)",
+  "GAM (k = 5)" = "Re_f * Fr_f + s(log_St, k = 5)"
+)
+gam_formula <- \(r, rhs) model_formula(r, rhs)
+loocv_gam <- expand_grid(model = names(gam_candidates), response = responses) |>
   mutate(
-    mse = map_dbl(response, \(r) mean(map_dbl(seq_len(nrow(data)), \(i)
-      (log(data[[r]][i]) - predict(fit_gam(r, data[-i, ]), data[i, ]))^2))),
-    n_par = unname(gam_edf[["mean"]])
+    mse = map2_dbl(model, response, \(m, r) mean(map_dbl(seq_len(nrow(data)), \(i)
+      (log(data[[r]][i]) - predict(gam(gam_formula(r, gam_candidates[[m]]),
+                                      data = data[-i, ], method = "REML"), data[i, ]))^2))),
+    n_par = map_dbl(model, \(m) round(sum(gam(gam_formula("mean", gam_candidates[[m]]),
+                                             data = data, method = "REML")$edf), 1))
   )
 
 loocv <- bind_rows(loocv_lm, loocv_gam)
@@ -149,7 +153,7 @@ loocv |>
         caption = "LOOCV MSE (log scale) for each candidate model. For the GAM, the parameter count is its effective degrees of freedom for the mean.")
 ```
 
-To check whether the polynomial distorts the effect of $St$, we also fit a generalized additive model (GAM) that replaces the polynomial with a smoothing spline in $\log St$. Like the cubic model, it uses one curve shared across $(Re, Fr)$ combinations plus a level for each combination; separate curves for each combination would overfit, since each has only 9 to 14 runs. We chose its smoothness by generalized cross-validation. The tuned GAM used `r sprintf("%.0f", min(gam_edf))` to `r sprintf("%.0f", max(gam_edf))` effective degrees of freedom and predicted about as well as the cubic model (average LOOCV MSE of `r sprintf("%.3f", avg_mse[["GAM (tuned)"]])` versus `r sprintf("%.3f", avg_mse[["Cubic Model"]])`), with nearly the same $St$ curve (@fig-st). We kept the cubic model, whose coefficients are simpler to report.
+To check whether the polynomial distorts the effect of $St$, we also fit a generalized additive model (GAM) that replaces the polynomial with a smoothing spline in $\log St$. Like the cubic model, it uses one curve shared across $(Re, Fr)$ combinations plus a level for each combination; separate curves for each combination would overfit, since each has only 9 to 14 runs. We chose its smoothness by REML. The tuned GAM used `r sprintf("%.0f", min(gam_edf))` to `r sprintf("%.0f", max(gam_edf))` effective degrees of freedom and predicted about as well as the cubic model (average LOOCV MSE of `r sprintf("%.3f", avg_mse[["GAM (tuned)"]])` versus `r sprintf("%.3f", avg_mse[["Cubic Model"]])`), with nearly the same $St$ curve (@fig-st). We kept the cubic model, whose coefficients are simpler to report.
 
 ## Diagnostics
 The cubic model fits all 4 responses well, with $R^2$ between `r sprintf("%.3f", min(r_squared))` and `r sprintf("%.3f", max(r_squared))`. In the baseline model's residuals, whole $(Re, Fr)$ groups sit above or below 0 for skewness and kurtosis, which shows that the effect of $Re$ depends on $Fr$; the cubic model removes these patterns (@fig-resid in the Appendix), although some uneven spread remains for standard deviation. The largest negative residuals mostly come from runs at the smallest Stokes number, $St = 0.05$, where the model predicts values that are too high. Runs with the same $Re$ and $Fr$ likely come from the same simulated flow, so they may not be fully independent, which could make our intervals slightly too narrow.
