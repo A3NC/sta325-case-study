@@ -269,7 +269,13 @@ bind_rows(pred_grid, obs) |>
 
 # Conclusion
 
-Each parameter shapes the cluster-size distribution in a different way. Turbulence intensity is strongly associated with cluster scale, while strong gravity is associated with heavier tails when turbulence is weak. The cubic model also indicates that the association with particle inertia changes across the observed $St$ range. Because gravity's influence varies with turbulence strength, conclusions drawn at one turbulence level should not be assumed to hold at another. The model predicts mean cluster volume most precisely; uncertainty is wider for the other statistics. Its main limitations are the small design (three levels each of $Re$ and $Fr$, with no runs at $Re = 398$, $Fr = 0.3$), remaining residual departures from normality and spread, and possible correlation within simulations. New simulations at intermediate $Re$ and $Fr$ values and at the missing combination would address these gaps most directly.
+Each parameter shapes the cluster-size distribution in a different way. Turbulence intensity is strongly associated with cluster scale, while strong gravity is associated with heavier tails when turbulence is weak. The cubic model also indicates that the association with particle inertia changes across the observed $St$ range. Because gravity's influence varies with turbulence strength, conclusions drawn at one turbulence level should not be assumed to hold at another. The model predicts mean cluster volume most precisely; uncertainty is wider for the other statistics.
+
+## Limitations and future work
+
+**The model can only predict at the 3 simulated levels of $Re$ and $Fr$.** Because it treats $Re$ and $Fr$ as categorical, it cannot interpolate intermediate values between levels or extrapolate to more extreme values than simulated. Mapping an unseen input level to the nearest simulated level would let the model perform prediction, but the offset would be completely discarded, and per-unit inference would still be impossible. The model also has no runs at $Re = 398$, $Fr = 0.3$, so interaction effects at that combination cannot be modeled.
+
+**Future simulations should be spread off the grid.** The current runs form a 3 by 3 grid in $(Re, Fr)$ with one combination missing. A more random non-grid structure to selecting input values would be beneficial, allowing $Fr$ and $Re$ to be treated as continuous, which they are. This change will improve interpolation and extrapolation. To address $Fr = \infty$ on a continuous scale, a $1/Fr$ transformation could be introduced.
 
 {{< pagebreak >}}
 
