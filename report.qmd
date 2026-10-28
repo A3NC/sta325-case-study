@@ -84,6 +84,20 @@ fits_cubic <- fits
 r_squared <- map_dbl(fits, \(m) summary(m)$r.squared)
 ```
 
+```{r}
+boxcox_profile <- \(fit, r) {
+  raw_fit <- lm(update(formula(fit), paste(r, "~ .")), data = data, y = TRUE)
+  p <- MASS::boxcox(raw_fit, lambda = seq(-2, 2, by = 0.01), plotit = FALSE)
+  tibble(lambda = p$x, loglik = p$y - max(p$y))
+}
+
+bc_profiles <- imap(fits, boxcox_profile)
+bc <- map_dfr(bc_profiles, \(p) {
+  ci <- range(p$lambda[p$loglik > -qchisq(0.95, 1) / 2])
+  tibble(lambda = p$lambda[which.max(p$loglik)], lower = ci[1], upper = ci[2])
+}, .id = "response")
+```
+
 # Introduction
 
 This case study explores how three factors affect the clustering of inertial particles in turbulent flows such as clouds. The data come from computer simulations: in each run, our collaborators simulated particles moving in a turbulent flow, identified clusters of particles, and measured the volume of each cluster. The dataset has 89 simulation runs, each summarizing the distribution of particle cluster volumes at one $(Re, Fr, St)$ setting. The three parameters take the following values:
@@ -118,9 +132,11 @@ Each observation in the dataset reports the first four raw moments of the respon
 
 ## Transformations
 
-The 4 responses differ in range and in skewness, so we checked each separately, before and after a log transform (@fig-skew in the appendix). The mean and standard deviation span `r format(round(range_ratio[["mean"]]), big.mark = ",")`-fold and `r format(round(range_ratio[["sd"]]), big.mark = ",")`-fold ranges and are strongly right-skewed, with skewness `r sprintf("%.2f", skew_raw[["mean"]])` and `r sprintf("%.2f", skew_raw[["sd"]])`. The log reduces both, to `r sprintf("%.2f", skew_log[["mean"]])` and `r sprintf("%.2f", skew_log[["sd"]])`, although the standard deviation stays moderately right-skewed. Skewness and kurtosis behave differently. Skewness spans only a `r format(round(range_ratio[["skewness"]]), big.mark = ",")`-fold range and is nearly symmetric (`r sprintf("%.2f", skew_raw[["skewness"]])`), and kurtosis spans a `r format(round(range_ratio[["kurtosis"]]), big.mark = ",")`-fold range but is only mildly right-skewed (`r sprintf("%.2f", skew_raw[["kurtosis"]])`). The log over-corrects both into left skew (`r sprintf("%.2f", skew_log[["skewness"]])` and `r sprintf("%.2f", skew_log[["kurtosis"]])`). A single log transform therefore does not suit all four responses equally well.
+The 4 responses differ in range and in skewness, so we checked each separately, before and after a log transform (@fig-skew in the appendix). The mean and standard deviation span `r format(round(range_ratio[["mean"]]), big.mark = ",")`-fold and `r format(round(range_ratio[["sd"]]), big.mark = ",")`-fold ranges and are strongly right-skewed, with skewness `r sprintf("%.2f", skew_raw[["mean"]])` and `r sprintf("%.2f", skew_raw[["sd"]])`. The log reduces both, to `r sprintf("%.2f", skew_log[["mean"]])` and `r sprintf("%.2f", skew_log[["sd"]])`, although the standard deviation stays moderately right-skewed. Skewness and kurtosis behave differently. Skewness spans only a `r format(round(range_ratio[["skewness"]]), big.mark = ",")`-fold range and is nearly symmetric (`r sprintf("%.2f", skew_raw[["skewness"]])`), and kurtosis spans a `r format(round(range_ratio[["kurtosis"]]), big.mark = ",")`-fold range but is only mildly right-skewed (`r sprintf("%.2f", skew_raw[["kurtosis"]])`). The log over-corrects both into left skew (`r sprintf("%.2f", skew_log[["skewness"]])` and `r sprintf("%.2f", skew_log[["kurtosis"]])`). A single log transform therefore might not suit all four responses equally well.
 
-We log-transformed $St$ because it is right-skewed (skewness of `r sprintf("%.2f", skewness(data$St))`), spans a wide range, and generally yielded better empirical models when transformed.
+To investigate this, we fit separate Box-Cox transforms to each response. The resulting $\hat\lambda$ ranges from `r sprintf("%.2f", min(bc$lambda))` to `r sprintf("%.2f", max(bc$lambda))`, and every 95% interval contains 0 (@tbl-boxcox and @fig-boxcox), which corresponds to log transformations, so the data supports the use of log transformations on all 4 responses.
+
+We also log-transformed $St$ because it is right-skewed (skewness of `r sprintf("%.2f", skewness(data$St))`), spans a wide range, and generally yielded better empirical models when transformed.
 
 ## Modeling
 
@@ -390,4 +406,32 @@ ggplot(skew_long, aes(value)) +
   scale_x_continuous(labels = scales::label_comma()) +
   labs(x = NULL, y = "Count") +
   theme_minimal()
+```
+
+```{r}
+#| label: tbl-boxcox
+#| tbl-cap: 'Estimated Box-Cox $\lambda$ for each response, with 95% profile-likelihood intervals. $\lambda = 0$ is the log transform.'
+bc |>
+  transmute(Response = unname(response_labels[response]),
+            Estimate = sprintf("%.2f", lambda),
+            `95% interval` = sprintf("[%.2f, %.2f]", lower, upper)) |>
+  kable()
+```
+
+```{r}
+#| label: fig-boxcox
+#| fig-cap: 'Box-Cox profile log-likelihood for each response under the final model, relative to its maximum. Values of $\lambda$ above the dotted line form the 95% interval; the dashed line marks $\lambda = 0$ (the log).'
+#| fig-height: 2.4
+#| fig-width: 8
+bind_rows(bc_profiles, .id = "response") |>
+  filter(loglik > -8) |>
+  mutate(response = factor(response_labels[response], levels = response_labels)) |>
+  ggplot(aes(lambda, loglik)) +
+  geom_hline(yintercept = -qchisq(0.95, 1) / 2, linetype = "dotted", color = "grey40") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey40") +
+  geom_line(color = "darkblue") +
+  facet_wrap(~ response, nrow = 1, scales = "free_x") +
+  labs(x = expression(lambda), y = "Log-likelihood\n(relative to max)") +
+  theme_minimal() +
+  theme(panel.spacing.x = grid::unit(1.5, "lines"))
 ```
