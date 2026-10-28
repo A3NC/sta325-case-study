@@ -121,25 +121,24 @@ bc <- map_dfr(bc_profiles, \(p) {
 
 # Introduction
 
-This case study explores how three factors affect the clustering of inertial particles in turbulent flows such as clouds. In each of 89 simulation runs, our collaborators simulated particles moving through a turbulent flow, identified clusters of particles, and summarized the distribution of cluster volumes at one $(Re, Fr, St)$ setting. The three parameters take the following values:
+Predicting when inertial particles form large, concentrated clusters can help researchers understand and anticipate uneven particle distributions in turbulent flows, including flows relevant to clouds. But resolving each new condition with direct numerical simulation can take days or longer. A reliable statistical surrogate could therefore help researchers screen conditions, prioritize costly simulations, and explore how changes in turbulence, gravity, or particle inertia reshape clustering. In 89 simulations, our collaborators identified clusters and recorded their volume distributions at different combinations of three parameters:
 
-* **Reynolds number** $Re$: 90, 224, 398. This measures how strong the turbulence is.
-* **Froude number** $Fr$: 0.052, 0.3, $\infty$. This measures the strength of gravity. Smaller $Fr$ means stronger gravity, and $Fr = \infty$ means no gravity.
-* **Stokes number** $St$: `r n_distinct(data$St)` values between `r min(data$St)` and `r max(data$St)`. This measures particle inertia. Particles with small $St$ follow the flow closely, while particles with large $St$ are heavier and respond more slowly.
+-   **Reynolds number** $Re$: 90, 224, 398. This measures how strong the turbulence is.
+-   **Froude number** $Fr$: 0.052, 0.3, $\infty$. This measures the strength of gravity. Smaller $Fr$ means stronger gravity, and $Fr = \infty$ means no gravity.
+-   **Stokes number** $St$: `r n_distinct(data$St)` values between `r min(data$St)` and `r max(data$St)`. This measures particle inertia. Particles with small $St$ follow the flow closely, while particles with large $St$ are heavier and respond more slowly.
 
-Our collaborators have two goals:
+We pursue two connected goals. First, we predict the mean, standard deviation, skewness, and kurtosis of cluster volume at new $(Re, Fr, St)$ settings. These summaries describe typical cluster size and the frequency of unusually small or large clusters, helping collaborators compare conditions before committing to another expensive simulation. Second, we infer from our model how turbulence, gravity, and inertia shape each summary: which effects are connected with the response, and whether one parameter's influence changes with another. This inference can point to the conditions that promote concentrated clusters and guide which regimes merit closer physical study.
 
-1. **Prediction:** predict the mean, standard deviation, skewness, and kurtosis of the cluster-volume distribution at new $(Re, Fr, St)$ settings. A single simulation can take days, while a fitted model returns a prediction in seconds, so a good model lets our collaborators explore new settings without running new simulations.
-2. **Inference:** determine how turbulence ($Re$), gravity ($Fr$), and particle inertia ($St$) affect the size and shape of the cluster-volume distribution, including whether each effect is nonlinear and whether the effect of one parameter depends on another, and explain these effects physically.
-
-For prediction, we use a response-specific GAM with a shared smooth of $\log St$ and an $Re \times Fr$ interaction: $k = 5$ for mean and standard deviation, and $k = 4$ for skewness and kurtosis, as selected by LOOCV. The cubic model remains a compact reference for the interaction contrasts and $St$ trends discussed below; it is not the lowest-error predictive model for all four responses.
+For prediction, we use response-specific GAMs with a shared smooth of $\log St$ and an $Re \times Fr$ interaction: $k = 5$ for mean and standard deviation, and $k = 4$ for skewness and kurtosis, as selected by LOOCV. 
 
 # Methodology
 
 ## Responses and transformations
+
 Each run reports the first four raw moments of its cluster-volume distribution, which we converted to central moments with `raw2central` and then to the mean, standard deviation, skewness, and kurtosis. The four responses differ in skewness: the mean and standard deviation are strongly right-skewed, while skewness and kurtosis are only mildly skewed, so a single log transform might not suit all four. We therefore fit a separate Box-Cox transformation to each response. Every 95% interval for $\lambda$ contains 0, the log transform (@tbl-boxcox), so the data support logging all four responses. We also log-transformed $St$, which is right-skewed and spans a `r round(max(data$St) / min(data$St))`-fold range. $Re$ and $Fr$ each take only 3 values, so we treat them as categorical.
 
 ## Model selection
+
 We compared the linear candidates and two GAM specifications by leave-one-out cross-validation (LOOCV), holding out one run at a time and measuring prediction error on the log-response scale (Table 1). The linear candidates include additive and interaction models, a cubic polynomial in $\log St$, and a natural spline with 4 degrees of freedom. The natural spline and cubic model both allow a nonlinear $St$ effect while retaining the $Re \times Fr$ interaction. Each GAM uses the same $Re \times Fr$ terms and a shared smooth of $\log St$; its smoothness is estimated by REML. The basis dimension $k$ sets the maximum flexibility of the smooth, and we compared $k = 4$ and $k = 5$.
 
 The lowest LOOCV error depends on the response: the $k = 5$ GAM performs best for mean and standard deviation, while the $k = 4$ GAM performs best for skewness and kurtosis. We therefore use the corresponding GAM for each response rather than selecting one specification for all four. The bold entries in Table 1 identify each response's lowest-error candidate. The GAM parameter counts are effective degrees of freedom (EDF) for the mean-response fit; the EDF can differ by response.
@@ -158,6 +157,7 @@ loocv |>
 ```
 
 ## Diagnostics
+
 The selected GAMs fit the log responses closely, with $R^2$ from `r sprintf("%.3f", min(selected_gam_rsq))` to `r sprintf("%.3f", max(selected_gam_rsq))`. Residual-versus-fitted plots show that the selected GAMs remove the broad group-level offsets seen under the additive baseline, with residuals centered around zero across the $(Re, Fr)$ combinations (@fig-resid in the Appendix). Some uneven residual spread and a few large errors remain, especially for standard deviation, skewness, and kurtosis. Runs sharing $(Re, Fr)$ may come from the same simulated flow and therefore may not be independent; this could make uncertainty intervals too narrow.
 
 # Results
@@ -178,9 +178,11 @@ write_csv(test_out, "predictions.csv")
 ```
 
 ## Predictions on the hold-out set
+
 We predicted the four statistics at the `r nrow(test)` hold-out settings (all point predictions are in `predictions.csv`). Because each GAM models the log of a statistic, exponentiating its fitted value gives the predicted median on the original scale. Every hold-out setting lies within the training range, so no prediction requires extrapolation, although the two settings at $St = 0.05$ sit at the edge of the design.
 
 ## Effects of each parameter
+
 Because the model is fit on the log scale, exponentiated contrasts are multiplicative changes, and because $Re$ and $Fr$ interact, the effect of gravity depends on $Re$. @fig-interaction shows the fitted value of each statistic for every $(Re, Fr)$ combination.
 
 ```{r}
@@ -213,7 +215,7 @@ cell_pred |>
   theme(panel.grid.minor = element_blank(), legend.position = "bottom")
 ```
 
-**Turbulence intensity ($Re$) controls cluster size.** Under strong gravity, the cubic model estimates that increasing $Re$ from 90 to 398 shrinks mean cluster volume by about 410 times and standard deviation by about 340 times. With no gravity, the reductions are about 250 times for the mean and 9.6 times for standard deviation. Stronger turbulence produces a wider range of eddy sizes, including much smaller ones, which appears to break particles into much smaller clusters.
+**Turbulence intensity (**$Re$) controls cluster size. Under strong gravity, the cubic model estimates that increasing $Re$ from 90 to 398 shrinks mean cluster volume by about 410 times and standard deviation by about 340 times. With no gravity, the reductions are about 250 times for the mean and 9.6 times for standard deviation. Stronger turbulence produces a wider range of eddy sizes, including much smaller ones, which appears to break particles into much smaller clusters.
 
 **Strong gravity creates heavy tails, but only when turbulence is weak.** At $Re = 90$, moving from strong gravity ($Fr = 0.052$) to no gravity ($Fr = \infty$) reduces skewness by a factor of about 16 and kurtosis by about 244, so strong gravity is associated with many small clusters and occasional very large ones. This effect weakens as $Re$ increases: removing gravity reduces kurtosis by about a factor of 9 at $Re = 224$ and has little effect at $Re = 398$, visible in @fig-interaction as a gap at $Re = 90$ that closes as $Re$ increases. One physical interpretation is that as turbulence strengthens, turbulent velocity fluctuations overwhelm gravitational settling, so the flow rather than gravity determines how particles cluster.
 
@@ -266,13 +268,14 @@ st_effect |>
   theme(panel.grid.minor = element_blank())
 ```
 
-**Particle inertia ($St$) has a smaller, nonlinear effect.**
-@fig-st shows the effect of $St$ relative to $St = 1$. Mean cluster volume rises with $St$, the standard deviation rises steeply at low $St$ and then levels off, and skewness and kurtosis peak at intermediate $St$ before declining. The cubic and GAM curves agree closely, so these conclusions do not depend on the polynomial form, and the bands widen near $St = 0.05$, where the model fits least well. Because the slope changes across the range, no single "doubling $St$" percentage summarizes the effect;
+**Particle inertia (**$St$) has a smaller, nonlinear effect. @fig-st shows the effect of $St$ relative to $St = 1$. Mean cluster volume rises with $St$, the standard deviation rises steeply at low $St$ and then levels off, and skewness and kurtosis peak at intermediate $St$ before declining. The cubic and GAM curves agree closely, so these conclusions do not depend on the polynomial form, and the bands widen near $St = 0.05$, where the model fits least well. Because the slope changes across the range, no single "doubling $St$" percentage summarizes the effect;
 
 # Conclusion
+
 Each parameter shapes the cluster-size distribution in a different way. Turbulence intensity is strongly associated with cluster scale, while strong gravity is associated with heavier tails when turbulence is weak. The effect of particle inertia is smaller and changes across the observed $St$ range. Because gravity's influence varies with turbulence strength, conclusions drawn at one turbulence level should not be assumed to hold at another.
 
 ## Limitations and future work
+
 The model can only predict at the 3 simulated levels of $Re$ and $Fr$: because it treats them as categorical, it cannot interpolate between levels or extrapolate beyond them, and snapping a new input to the nearest level would ignore the difference between levels. Future simulations should therefore be spread off the grid. The current grid spends all 89 runs on 3 levels each of $Re$ and $Fr$, and refining it scales badly: adding a fourth level of each parameter raises a full grid from $3^3 = 27$ to $4^3 = 64$ settings. A space-filling design gives every run new values of all three parameters, so the same budget covers far more of the input space and lets $Re$ and $Fr$ be treated as continuous.
 
 {{< pagebreak >}}
