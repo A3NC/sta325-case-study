@@ -88,14 +88,16 @@ cv <- loocv |>
   column_to_rownames("model")
 avg_mse <- rowMeans(cv)
 
+# The response-specific LOOCV winners use k = 5 for mean and SD,
+# and k = 4 for skewness and kurtosis.
+selected_gam_k <- c(mean = 5, sd = 5, skewness = 4, kurtosis = 4)
+selected_gam_fit <- imap(selected_gam_k, \(k, r)
+  gam(gam_formula(r, gam_candidates[[paste0("GAM (k = ", k, ")")]]),
+      data = data, method = "REML"))
+selected_gam_rsq <- map_dbl(selected_gam_fit, \(m) summary(m)$r.sq)
+
 fits_baseline <- map(responses, \(r) lm(model_formula(r, candidates[["Baseline (additive)"]]), data = data))
-
-gam_fit <- map(
-  responses,
-  \(r) gam(gam_formula(r, gam_candidates[["GAM (k = 5)"]]), data = data, method = "REML")
-)
-
-gam_edf <- map_dbl(gam_fit, \(g) sum(g$edf))
+gam_fit <- selected_gam_fit
 
 fits <- map(responses, \(r) lm(model_formula(r, candidates[["Cubic Model"]]), data = data))
 
@@ -103,7 +105,7 @@ r_squared <- map_dbl(fits, \(m) summary(m)$r.sq)
 ```
 
 ```{r}
-# ---- Box-Cox profiles for each response under the final model ----
+# ---- Box-Cox profiles for each response under the cubic reference model ----
 boxcox_profile <- \(fit, r) {
   raw_fit <- lm(update(formula(fit), paste(r, "~ .")), data = data, y = TRUE)
   p <- MASS::boxcox(raw_fit, lambda = seq(-2, 2, by = 0.01), plotit = FALSE)
@@ -130,16 +132,7 @@ Our collaborators have two goals:
 1. **Prediction:** predict the mean, standard deviation, skewness, and kurtosis of the cluster-volume distribution at new $(Re, Fr, St)$ settings. A single simulation can take days, while a fitted model returns a prediction in seconds, so a good model lets our collaborators explore new settings without running new simulations.
 2. **Inference:** determine how turbulence ($Re$), gravity ($Fr$), and particle inertia ($St$) affect the size and shape of the cluster-volume distribution, including whether each effect is nonlinear and whether the effect of one parameter depends on another, and explain these effects physically.
 
-Our final model is as follows, where $Re_{224}$, $Re_{398}$, $Fr_{0.3}$, and $Fr_{\infty}$ are 0/1 indicators for each level (baseline $Re = 90$, $Fr = 0.052$).
-
-$$
-\begin{aligned}
-\log{\text{responses}} = {} & \beta_0 + \beta_1 \log{St} + \beta_2 (\log{St})^2 + \beta_3 (\log{St})^3 + \beta_4 Re_{224} + \beta_5 Re_{398} + \beta_6 Fr_{0.3} + \beta_7 Fr_{\infty}\\
-& + \beta_8 Re_{224} Fr_{0.3} + \beta_9 Re_{224} Fr_{\infty} + \beta_{10} Re_{398} Fr_{\infty} + \varepsilon, \qquad \varepsilon \sim N(0, \sigma^2)
-\end{aligned}
-$$
-
-For prediction, the model achieves a LOOCV MSE of `r sprintf("%.3f", avg_mse[["Cubic Model"]])` averaged across the 4 responses. For inference, the $Re \times Fr$ terms describe how the effect of gravity changes with turbulence, and the polynomial terms capture the nonlinear effect of $St$.
+For prediction, we use a response-specific GAM with a shared smooth of $\log St$ and an $Re \times Fr$ interaction: $k = 5$ for mean and standard deviation, and $k = 4$ for skewness and kurtosis, as selected by LOOCV. The cubic model remains a compact reference for the interaction contrasts and $St$ trends discussed below; it is not the lowest-error predictive model for all four responses.
 
 # Methodology
 
@@ -147,7 +140,9 @@ For prediction, the model achieves a LOOCV MSE of `r sprintf("%.3f", avg_mse[["C
 Each run reports the first four raw moments of its cluster-volume distribution, which we converted to central moments with `raw2central` and then to the mean, standard deviation, skewness, and kurtosis. The four responses differ in skewness: the mean and standard deviation are strongly right-skewed, while skewness and kurtosis are only mildly skewed, so a single log transform might not suit all four. We therefore fit a separate Box-Cox transformation to each response. Every 95% interval for $\lambda$ contains 0, the log transform (@tbl-boxcox), so the data support logging all four responses. We also log-transformed $St$, which is right-skewed and spans a `r round(max(data$St) / min(data$St))`-fold range. $Re$ and $Fr$ each take only 3 values, so we treat them as categorical.
 
 ## Model selection
-We compared four linear models of increasing flexibility using leave-one-out cross-validation (LOOCV), which refits each model 89 times with one run held out and measures the error in predicting that run (Table 1). The baseline model has additive effects of $\log St$, $Re$, and $Fr$. Interaction Model 2 adds $Re \times Fr$, so each combination has its own level. Interaction Model 1 also lets the slope in $\log St$ differ by $Re$ and $Fr$. The cubic model adds $(\log St)^2$ and $(\log St)^3$ to Interaction Model 2, so the effect of $St$ can curve. Adding $Re \times Fr$ gave the largest improvement, cutting average LOOCV MSE from `r sprintf("%.3f", avg_mse[["Baseline (additive)"]])` to `r sprintf("%.3f", avg_mse[["Interaction Model 2"]])`. Adding curvature in $St$ lowered it further to `r sprintf("%.3f", avg_mse[["Cubic Model"]])`, while letting the $St$ slope vary by $Re$ and $Fr$ did not help on average (`r sprintf("%.3f", avg_mse[["Interaction Model 1"]])`). The cubic model had the lowest LOOCV MSE of the linear models for all four responses.
+We compared the linear candidates and two GAM specifications by leave-one-out cross-validation (LOOCV), holding out one run at a time and measuring prediction error on the log-response scale (Table 1). The linear candidates include additive and interaction models, a cubic polynomial in $\log St$, and a natural spline with 4 degrees of freedom. The natural spline and cubic model both allow a nonlinear $St$ effect while retaining the $Re \times Fr$ interaction. Each GAM uses the same $Re \times Fr$ terms and a shared smooth of $\log St$; its smoothness is estimated by REML. The basis dimension $k$ sets the maximum flexibility of the smooth, and we compared $k = 4$ and $k = 5$.
+
+The lowest LOOCV error depends on the response: the $k = 5$ GAM performs best for mean and standard deviation, while the $k = 4$ GAM performs best for skewness and kurtosis. We therefore use the corresponding GAM for each response rather than selecting one specification for all four. The bold entries in Table 1 identify each response's lowest-error candidate. The GAM parameter counts are effective degrees of freedom (EDF) for the mean-response fit; the EDF can differ by response.
 
 ```{r}
 loocv |>
@@ -162,10 +157,8 @@ loocv |>
         caption = "LOOCV MSE (log scale) for each candidate model. For the GAM, the parameter count is its effective degrees of freedom for the mean.")
 ```
 
-To check whether the polynomial distorts the effect of $St$, we also fit a generalized additive model (GAM) that replaces the polynomial with a smoothing spline in $\log St$. Like the cubic model, it uses one curve shared across $(Re, Fr)$ combinations plus a level for each combination; separate curves for each combination would overfit, since each has only 9 to 14 runs. We chose its smoothness by REML. The tuned GAM used `r sprintf("%.0f", min(gam_edf))` to `r sprintf("%.0f", max(gam_edf))` effective degrees of freedom and predicted about as well as the cubic model (average LOOCV MSE of `r sprintf("%.3f", avg_mse[["GAM (k = 5)"]])` versus `r sprintf("%.3f", avg_mse[["Cubic Model"]])`), with nearly the same $St$ curve (@fig-st). We kept the cubic model, whose coefficients are simpler to report.
-
 ## Diagnostics
-The cubic model fits all 4 responses well, with $R^2$ between `r sprintf("%.3f", min(r_squared))` and `r sprintf("%.3f", max(r_squared))`. In the baseline model's residuals, whole $(Re, Fr)$ groups sit above or below 0 for skewness and kurtosis, which shows that the effect of $Re$ depends on $Fr$; the cubic model removes these patterns (@fig-resid in the Appendix), although some uneven spread remains for standard deviation. The largest negative residuals mostly come from runs at the smallest Stokes number, $St = 0.05$, where the model predicts values that are too high. Runs with the same $Re$ and $Fr$ likely come from the same simulated flow, so they may not be fully independent, which could make our intervals slightly too narrow.
+The selected GAMs fit the log responses closely, with $R^2$ from `r sprintf("%.3f", min(selected_gam_rsq))` to `r sprintf("%.3f", max(selected_gam_rsq))`. Residual-versus-fitted plots show that the selected GAMs remove the broad group-level offsets seen under the additive baseline, with residuals centered around zero across the $(Re, Fr)$ combinations (@fig-resid in the Appendix). Some uneven residual spread and a few large errors remain, especially for standard deviation, skewness, and kurtosis. Runs sharing $(Re, Fr)$ may come from the same simulated flow and therefore may not be independent; this could make uncertainty intervals too narrow.
 
 # Results
 
@@ -173,12 +166,10 @@ The cubic model fits all 4 responses well, with $R^2$ between `r sprintf("%.3f",
 test <- read_csv("data/data-test.csv", show_col_types = FALSE) |>
   mutate(Re_f   = factor(Re, levels = levels(data$Re_f)),
          Fr_f   = factor(Fr, levels = levels(data$Fr_f)),
-         log_St = log(St),
-         log_St_sq = log(St)^2,
-         log_St_cubic = log(St)^3)
+         log_St = log(St))
 
 preds <- map_dfc(responses, \(r) {
-  p <- exp(predict(gam_fit[[r]], newdata = test, type = "link"))
+  p <- exp(predict(selected_gam_fit[[r]], newdata = test, type = "link"))
   tibble(!!r := as.numeric(p))
 })
 
@@ -290,14 +281,18 @@ The model can only predict at the 3 simulated levels of $Re$ and $Fr$: because i
 
 ```{r}
 #| label: fig-resid
-#| fig-cap: "Residuals against fitted values for the baseline model (top) and the cubic model (bottom)."
+#| fig-cap: "Residuals against fitted values for the additive baseline (top) and the response-specific selected GAMs (bottom)."
 #| fig-height: 1.7
 #| fig-width: 7
-map_dfr(list(Baseline = fits_baseline, "Cubic model" = fits), \(fit_list)
-  imap_dfr(fit_list, \(m, r) tibble(response = response_labels[[r]], fitted = fitted(m), residual = resid(m))),
-  .id = "model") |>
+residual_diagnostics <- bind_rows(
+  imap_dfr(fits_baseline, \(m, r) tibble(model = "Baseline", response = r,
+                                          fitted = fitted(m), residual = resid(m))),
+  imap_dfr(selected_gam_fit, \(m, r) tibble(model = "Selected GAM", response = r,
+                                            fitted = fitted(m), residual = resid(m)))
+)
+residual_diagnostics |>
   mutate(response = factor(response, levels = response_labels),
-         model = factor(model, levels = c("Baseline", "Cubic model"))) |>
+         model = factor(model, levels = c("Baseline", "Selected GAM"))) |>
   ggplot(aes(fitted, residual)) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
   geom_point(size = 0.8, color = "#012169") +
